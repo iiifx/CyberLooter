@@ -192,6 +192,10 @@ function Config.DrawWindow(status)
         ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Engine prompt failed, using the ImGui indicator.")
     end
 
+    if status.heavyFilterBroken then
+        ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Heavy weapon filter is inactive (item records unreadable).")
+    end
+
     if ImGui.Button("Clear log") then
         Log.Reset()
     end

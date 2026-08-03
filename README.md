@@ -203,6 +203,9 @@ where anything failed.
 
 The settings window also shows live diagnostics: the assigned key, the active scan
 strategy, the current object and stack count in radius, and the result of the last sweep.
+It also warns when one of the safety checks cannot run on the current build — an inactive
+vanilla-prompt guard or an inactive heavy-weapon filter is called out there in orange
+rather than left to be discovered in play.
 
 ## Extras: autorun
 

@@ -16,7 +16,7 @@ local Hud = require("Modules/Hud.lua")
 local Input = require("Modules/Input.lua")
 
 local CyberLooter = {
-    version = "0.2.3",
+    version = "0.2.4",
     ready = false,
 }
 
@@ -133,6 +133,7 @@ local function main()
                 registrySize = Scanner.GetRegistrySize(),
                 hintForcedFallback = Hint.forcedFallback,
                 interactionGuardBroken = State.interactionCheckBroken,
+                heavyFilterBroken = Scanner.restrictedCheckAnswered == false,
             })
         end
 

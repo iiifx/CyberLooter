@@ -77,38 +77,139 @@ end
 -- you carry in your hands - live in the WeaponHeavy equip area and are meant to
 -- be picked up through the interaction that equips them. Transferring one as if
 -- it were loot leaves the player in the carrying pose holding nothing at all.
-function Scanner.IsRestrictedItem(itemData)
-    local ok, restricted = pcall(function()
-        local itemType = itemData:GetItemType()
-        if Equals(itemType, gamedataItemType.Wea_HeavyMachineGun)
-            or Equals(itemType, gamedataItemType.Wea_LightMachineGun) then
-            return true
-        end
+--
+-- Every signal below is probed on its own and an unanswerable one counts as "not
+-- restricted". The first version of this check ran all of them inside a single
+-- pcall and treated any error as "restricted", which meant one unavailable API
+-- silently marked every item in the game as untouchable and the mod stopped
+-- seeing loot at all. Losing one filter is a bug; losing the whole mod is worse,
+-- so the failure now points the other way and says so in the log.
+local RESTRICTED_ITEM_TYPES = { "Wea_HeavyMachineGun", "Wea_LightMachineGun" }
+local RESTRICTED_TAG = "DiscardOnEmpty"
 
-        -- Weapons discarded when empty are the same kind of hand-carried pickup.
-        if itemData:HasTag("DiscardOnEmpty") then
-            return true
-        end
+-- nil until the first item has been examined, then true/false.
+Scanner.restrictedCheckAnswered = nil
+local _restrictedWarned = false
 
-        local record = RPGManager.GetItemRecord(ItemID.GetTDBID(itemData:GetID()))
-        if record ~= nil then
-            local area = record:EquipArea()
-            if area ~= nil and Equals(area:Type(), gamedataEquipmentArea.WeaponHeavy) then
-                return true
-            end
-        end
-
-        return false
+-- Reading a member that the running build does not have must not throw.
+local function enumMember(enumTable, name)
+    local ok, value = pcall(function()
+        return enumTable[name]
     end)
 
-    -- If the question cannot be answered, leave the item alone rather than risk
-    -- repeating the broken-state bug.
     if not ok then
-        Log.DebugThrottled("scan.restricted", 30, "restricted check failed: " .. tostring(restricted))
-        return true
+        return nil
     end
 
-    return restricted == true
+    return value
+end
+
+local function sameEnum(a, b)
+    if a == nil or b == nil then
+        return false
+    end
+
+    local ok, equal = pcall(Equals, a, b)
+    if ok then
+        return equal == true
+    end
+
+    return a == b
+end
+
+-- Returns true/false, or nil when the question could not be asked at all.
+local function probe(key, fn)
+    local ok, result = pcall(fn)
+
+    if not ok then
+        Log.DebugThrottled("scan.restricted." .. key, 30.0,
+            "restricted check '" .. key .. "' unavailable: " .. tostring(result))
+        return nil
+    end
+
+    return result == true
+end
+
+function Scanner.IsRestrictedItem(itemData)
+    if itemData == nil then
+        return false
+    end
+
+    local answered = false
+
+    -- A readable record is not by itself an answer: what counts is whether one of
+    -- the actual signals below could be evaluated.
+    local record = nil
+    probe("record", function()
+        record = RPGManager.GetItemRecord(ItemID.GetTDBID(itemData:GetID()))
+        return record ~= nil
+    end)
+
+    if record ~= nil then
+        -- The authoritative signal: hand-carried weapons declare WeaponHeavy.
+        local heavyArea = probe("equiparea", function()
+            local area = record:EquipArea()
+            return area ~= nil and sameEnum(area:Type(), enumMember(gamedataEquipmentArea, "WeaponHeavy"))
+        end)
+        if heavyArea == true then
+            Scanner.restrictedCheckAnswered = true
+            return true
+        end
+
+        local heavyType = probe("itemtype", function()
+            local typeRecord = record:ItemType()
+            if typeRecord == nil then
+                return false
+            end
+
+            local itemType = typeRecord:Type()
+            for _, name in ipairs(RESTRICTED_ITEM_TYPES) do
+                if sameEnum(itemType, enumMember(gamedataItemType, name)) then
+                    return true
+                end
+            end
+
+            return false
+        end)
+        if heavyType == true then
+            Scanner.restrictedCheckAnswered = true
+            return true
+        end
+
+        if heavyArea ~= nil or heavyType ~= nil then
+            answered = true
+        end
+    end
+
+    -- Weapons discarded when empty are the same kind of hand-carried pickup.
+    local tagged = probe("tag", function()
+        return itemData:HasTag(CName.new(RESTRICTED_TAG))
+    end)
+    if tagged == true then
+        Scanner.restrictedCheckAnswered = true
+        return true
+    end
+    if tagged ~= nil then
+        answered = true
+    end
+
+    if answered then
+        Scanner.restrictedCheckAnswered = true
+    else
+        -- Once a single item has been judged successfully the filter is known to
+        -- work, so a later unreadable item does not flip the diagnostic back.
+        if Scanner.restrictedCheckAnswered == nil then
+            Scanner.restrictedCheckAnswered = false
+        end
+
+        if not _restrictedWarned then
+            _restrictedWarned = true
+            Log.Warn("none of the hand-carried-weapon checks could be evaluated on this build; "
+                .. "heavy weapons will not be filtered out of sweeps")
+        end
+    end
+
+    return false
 end
 
 -- Counts stacks rather than units: 45 rounds of ammo is one entry, which keeps
@@ -465,6 +566,7 @@ local function collect(entities, player, radius)
     local stacks = 0
     local skippedQuest = 0
     local rejected = {}
+    local restrictedStacks = 0
 
     for _, entity in ipairs(entities) do
         local holder = resolveHolder(entity)
@@ -489,6 +591,7 @@ local function collect(entities, player, radius)
                 local dist = distanceTo(playerPos, holder)
                 if dist ~= nil and dist <= radius then
                     local count, restricted = inspect(holder)
+                    restrictedStacks = restrictedStacks + restricted
 
                     if count > 0 then
                         if Config.values.skipQuestItems and hasQuestLoot(holder) then
@@ -525,7 +628,7 @@ local function collect(entities, player, radius)
         Log.DebugThrottled("scan.rejected", 5.0, "not lootable: " .. table.concat(parts, " "))
     end
 
-    return objects, stacks, skippedQuest
+    return objects, stacks, skippedQuest, restrictedStacks
 end
 
 -- Cached: called both by the indicator every frame and by the sweep.
@@ -569,13 +672,17 @@ function Scanner.Get()
     end
 
     -- collect() deduplicates, so overlap between sources is free.
-    local objects, stacks, skippedQuest = collect(merged, player, radius)
+    local objects, stacks, skippedQuest, restrictedStacks = collect(merged, player, radius)
 
     Scanner.strategy = #contributors > 0 and table.concat(contributors, "+") or "nothing found"
 
+    -- The restricted tally is logged even when it is zero: a build where the
+    -- hand-carried-weapon check misfires shows up here as every stack in the
+    -- world being classified restricted, which is exactly how the 0.2.3
+    -- "nothing is lootable any more" regression looked from the outside.
     Log.DebugThrottled("scan.result", 2.0, string.format(
-        "scan [%s]: %d raw, %d lootable, %d stacks, %d quest skipped",
-        table.concat(detail, " "), #merged, #objects, stacks, skippedQuest))
+        "scan [%s]: %d raw, %d lootable, %d stacks, %d quest skipped, %d restricted stacks",
+        table.concat(detail, " "), #merged, #objects, stacks, skippedQuest, restrictedStacks))
 
     _cache = { objects = objects, stacks = stacks }
     return _cache.objects, _cache.stacks

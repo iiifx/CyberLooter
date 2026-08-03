@@ -183,8 +183,17 @@ Restricted items are those the game equips into the player's hands rather than i
 inventory — heavy weapons, identified by the `WeaponHeavy` equip area, the machine-gun item
 types, or the `DiscardOnEmpty` tag. Bulk-transferring one leaves the player stuck in the
 carrying pose holding an invisible weapon, so an object that also holds ordinary loot goes
-item by item instead, and an object holding nothing else is skipped entirely. If the check
-itself cannot be answered, the item is treated as restricted.
+item by item instead, and an object holding nothing else is skipped entirely.
+
+Each of those three signals is probed separately and an unanswerable one counts as "not
+restricted". The first implementation did the opposite — one `pcall` around all three, any
+error meaning restricted — and that turned a single unavailable API into a total outage:
+every item in the game was classified restricted, so every object reported zero lootable
+stacks and the mod went silently blind. Failing open loses one filter; failing closed loses
+the mod. When no signal at all can be evaluated, a warning goes to the log and the settings
+window says the heavy-weapon filter is inactive, so the weaker guarantee is visible rather
+than assumed. The per-scan debug line also reports how many stacks were classed restricted,
+which is what makes this failure mode obvious at a glance.
 Success is judged by the object actually emptying — `GetTotalItemQuantity` before and
 after — because that is the only honest signal available.
 
