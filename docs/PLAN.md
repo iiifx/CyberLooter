@@ -135,13 +135,16 @@ Registration happens at load time, never from `onInit` — see RESEARCH §11.
 
 ### Scanner.lua
 
-Three strategies, tried in order; the first one that returns lootable objects is locked in
+Two strategies, tried in order; the first one that returns lootable objects is locked in
 for the session and named in the log and the settings window:
 
 1. `TargetingSystem:GetTargetParts` with a `TargetSearchQuery` (`maxDistance` = radius,
-   `testedSet = gameTargetingSet.Complete`);
-2. `MappinSystem:GetMappins(...)`;
-3. a passive registry fed by `GameplayMappinController` observers.
+   `testedSet = gameTargetingSet.Complete`) — this is the one that works in practice;
+2. a passive registry fed by `GameplayMappinController` observers, kept as a fallback.
+   Its observers stop recording once another strategy wins, so it is free while unused.
+
+A third strategy over `MappinSystem:GetMappins` was implemented and then deleted: on
+game 2.x it returns records with no entity handle. See RESEARCH §9.
 
 Candidate filtering uses native RTTI names: `gameItemDropObject`, `gameLootBag`,
 `gameLootContainerBase`, `gameContainerObjectBase`, `gameContainerObjectSingleItem`, and

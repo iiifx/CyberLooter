@@ -1,9 +1,13 @@
 -- Finding lootable objects around the player.
 --
--- This is the one piece the research could not settle statically, so three
+-- This is the one piece the research could not settle statically, so two
 -- independent strategies are implemented and tried in order. The first one that
 -- yields actual lootable objects (not merely raw entities) is locked in for the
--- session and reported in the log; until then every strategy is retried.
+-- session and reported in the log; until then both strategies are retried.
+--
+-- A third one (the mappin system) was implemented and removed: on game 2.x it
+-- hands back records with no entity handle, so there is nothing to loot from
+-- them. See docs/RESEARCH.md section 9.
 
 local Scanner = {}
 
@@ -18,7 +22,7 @@ local _cacheStamp = -1.0
 local _cache = { objects = {}, stacks = 0 }
 local _nextPrune = REGISTRY_PRUNE_INTERVAL
 
--- Strategy C keeps its own passive registry, filled by observers.
+-- Strategy B keeps its own passive registry, filled by observers.
 local _mappinRegistry = {}
 local _registryCount = 0
 
@@ -185,64 +189,17 @@ local function strategyTargeting(player, radius)
 end
 
 --------------------------------------------------------------------------------
--- Strategy B: mappin system
---------------------------------------------------------------------------------
-
--- Note: on game 2.x GetMappins is documented to return gamemappinsMappinEntry
--- records, which carry only id/type/worldPosition and no entity handle - there is
--- nothing to loot from those. Older builds returned IMappin objects that do expose
--- GetEntityID. Both shapes are handled, and the shape actually observed is logged
--- once so the strategy can be dropped for good if it never yields anything.
-local function strategyMappins(player, radius)
-    local ok, entities = pcall(function()
-        local system = Game.GetMappinSystem()
-        if system == nil then
-            return nil
-        end
-
-        local mappins = system:GetMappins(gamemappinsMappinTargetType.World)
-        if mappins == nil then
-            return nil
-        end
-
-        local found = {}
-        local usable = 0
-
-        for _, mappin in ipairs(mappins) do
-            local gotID, entityID = pcall(function()
-                return mappin:GetEntityID()
-            end)
-
-            if gotID and entityID ~= nil then
-                usable = usable + 1
-                local entity = Game.FindEntityByID(entityID)
-                if entity ~= nil then
-                    found[#found + 1] = entity
-                end
-            end
-        end
-
-        Log.DebugThrottled("scan.mappins.shape", 30, string.format(
-            "mappin system returned %d records, %d exposed an entity id",
-            #mappins, usable))
-
-        return found
-    end)
-
-    if not ok then
-        Log.DebugThrottled("scan.mappins", 30, "strategy mappins failed: " .. tostring(entities))
-        return nil
-    end
-
-    return entities
-end
-
---------------------------------------------------------------------------------
--- Strategy C: passive registry fed by loot marker controllers
+-- Strategy B: passive registry fed by loot marker controllers
 --------------------------------------------------------------------------------
 
 -- Called from the observers registered in Scanner.InstallObservers.
 local function rememberMappinController(ctrl)
+    -- Once another strategy is doing the work, the registry is dead weight:
+    -- stop recording and let the pruner drain whatever is left.
+    if Scanner.strategyLocked and Scanner.strategy ~= "registry" then
+        return
+    end
+
     local ok, err = pcall(function()
         local mappin = ctrl:GetMappin()
         if mappin == nil then
@@ -342,7 +299,6 @@ end
 
 local STRATEGIES = {
     { name = "targeting", run = strategyTargeting },
-    { name = "mappins", run = strategyMappins },
     { name = "registry", run = strategyRegistry },
 }
 

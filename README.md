@@ -204,25 +204,32 @@ strategy, the current object and stack count in radius, and the result of the la
 
 ## Compatibility
 
-- Written against Cyberpunk 2077 2.3 and Cyber Engine Tweaks v1.37.1. Every game API it
-  uses was checked against the game's decompiled scripts and the CET source, but the mod
-  has not yet been through a full in-game test pass — see the status note below.
+- Written for Cyberpunk 2077 2.3 with Cyber Engine Tweaks v1.37.1, and confirmed working
+  there. Every game API it uses was also checked against the game's decompiled scripts and
+  the CET source.
 - It should coexist with loot marker mods such as BetterLootMarkers: this mod reads marker
   data and never modifies markers itself. Not verified in practice.
 - Does not modify save data, game files or archives. Removing the folder removes the mod.
 
 ## Status
 
-This is version 0.1.0 and it has not been run in the game yet: it was written on a machine
-that cannot launch Cyberpunk 2077. Everything it does was verified statically against the
-game's decompiled scripts, and every uncertain call has a fallback and a log entry, but
-expect rough edges on the first run.
+Working. First in-game pass on 2026-08-03: loot is found and collected, and the prompt
+renders as a normal game button hint in the usual place.
 
-Three things in particular are unverified and may need adjusting:
-finding loot around the player (three strategies are implemented, the one that works is
-picked automatically and named in the settings window), whether the prompt updates cleanly
-when the count changes, and whether the native hold animation lines up with the configured
-hold time. If something misbehaves, the log will say which of these it was.
+What that run established:
+
+- **Loot search** resolves to the targeting-system strategy, which handles corpses,
+  containers and ground items alike. A second strategy is kept as a fallback in case a
+  future patch breaks the first; the active one is named in the settings window.
+- **Every transfer went through the game's own `TransferAllItems`** — the per-item
+  emergency fallback was never needed, so in practice the mod loots exactly the way the
+  game does.
+- **No warnings**, meaning the guard that keeps the key out of the way during normal
+  interactions is genuinely active rather than silently disabled.
+
+Still worth knowing: the hold animation is timed by the engine from the interact action's
+own configuration, not by `holdTime`. If the bar and the actual trigger ever feel out of
+step, tune `holdTime` to match.
 
 ## License
 

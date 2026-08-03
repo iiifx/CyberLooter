@@ -161,9 +161,13 @@ function GetBind(id) end
 **Conclusion.** `registerForEvent("onDraw", ...)` always runs, so an ImGui indicator is
 possible without native widgets. (Used only as the fallback path — see §10.)
 
-## 9. Finding loot around the player — THE REMAINING UNKNOWN
+## 9. Finding loot around the player — SETTLED IN-GAME (2026-08-03)
 
-Three candidates, none verified in-game:
+Three candidates were implemented as a fallback chain. The first in-game run settled it:
+**strategy A (targeting system) works** and was locked in immediately
+(`scan strategy resolved: targeting`), with every sweep succeeding through it. Strategy B
+was removed from the code as proven dead, strategy C is kept as a fallback. The original
+analysis follows.
 
 **A. Targeting system.** `gametargetingTargetingSystem:GetTargetParts(instigator, query)`
 with a `TargetSearchQuery` (`maxDistance`, `searchFilter`, `testedSet`). Game-side example
@@ -194,8 +198,12 @@ logs which one it actually saw, so this strategy can be deleted outright once co
 `Game.FindEntityByID()`. Upside: proven in a shipping mod. Downside: passive — the game
 calls us rather than us querying it — so it needs its own registry and pruning.
 
-**Decision.** Implement all three as a fallback chain in order A → B → C and log the outcome
-of each. The first real run on the player's machine settles it, and the losers get deleted.
+**Decision, and outcome.** All three were implemented as a fallback chain in order
+A → B → C, each logging its outcome. The first real run resolved to A. B has since been
+deleted: the RTTI evidence above says it cannot work on 2.x, and the run confirmed it never
+contributed. C remains as a fallback in case A stops returning results on a future patch,
+but its observers stop recording once another strategy is locked in, so it costs nothing
+while unused.
 
 ## 10. Button prompts can be rendered by the engine — VERIFIED
 
@@ -261,11 +269,12 @@ Game.SendInputHintData(true, hint, "GameplayInputHelper")
 This gets native styling, native placement, the native hold animation and the correct key
 glyph for both keyboard and gamepad.
 
-Open questions (assumptions, to be settled by the log on the first deployment):
+Confirmed in-game on 2026-08-03: the prompt renders natively and the mod runs without a
+single warning. Two details are still worth watching, and both have a switch ready:
 - whether re-sending with the same `action` + `source` updates the existing hint or stacks
-  a duplicate (plan B: take it down with `show=false` and re-send);
+  a duplicate (plan B: `hintRefreshHack` takes it down with `show=false` and re-sends);
 - whether the native hold animation timing matches our threshold — it comes from the
-  action's input config, not from us.
+  action's input config, not from us, so `holdTime` can be tuned to match.
 
 ## 11. Registration must happen at load time — VERIFIED
 
