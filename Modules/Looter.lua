@@ -105,10 +105,17 @@ local function lootOne(entry, player)
     end
 
     if after == -1 then
-        if ok then
+        if not ok then
+            return false, "handle lost", 0
+        end
+
+        -- Taking the call at its word only makes sense if the object was known to
+        -- hold something a moment ago. When the count was already unreadable
+        -- beforehand, nothing has been observed at either end and there is no
+        -- evidence to report success on, so the fallback below gets its turn.
+        if before > 0 then
             return true, "transferAll(unverified)", nil
         end
-        return false, "handle lost", 0
     end
 
     -- Starting count unknown, but the object is now demonstrably empty.

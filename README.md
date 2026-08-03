@@ -231,6 +231,32 @@ so no CET mod can move the character by itself. Mods that manage it ship a nativ
 and pull in RED4ext, Redscript, InputLoader and Mod Settings as dependencies. Holding the
 key from outside the game achieves the same result with nothing added to the game at all.
 
+## Development
+
+The mod is written on Linux and run on Windows, so nothing can be tried out where it is
+written. Two things stand in for that, both in `tests/`:
+
+```
+tests/run.sh
+```
+
+First it parses every file the game will load, which is the cheapest possible protection
+against shipping a mod that fails to start over a typo. Then it runs the specs: the
+decision logic — what counts as lootable, what must never be taken, when a sweep may claim
+success, when a gate is allowed to keep the mod quiet — against a stand-in for the game
+API that refuses the same things the engine refuses.
+
+It needs LuaJIT, the interpreter Cyber Engine Tweaks itself embeds (`sudo apt install
+luajit`, or point the runner at your own with `LUA=/path/to/luajit tests/run.sh`).
+
+What these tests can and cannot do is worth being clear about. They pin down the mod's own
+reasoning and they lock in the bugs it has already shipped, so those cannot come back
+quietly. They cannot discover that a game function behaves differently from what the stub
+assumes — that is what the log from a real session is for, and it is why the log is treated
+as a first-class feature rather than an afterthought.
+
+The `tests/` folder is inert inside the game: Cyber Engine Tweaks only loads `init.lua`.
+
 ## Compatibility
 
 - Written for Cyberpunk 2077 2.3 with Cyber Engine Tweaks v1.37.1, and confirmed working
