@@ -16,7 +16,7 @@ local Hud = require("Modules/Hud.lua")
 local Input = require("Modules/Input.lua")
 
 local CyberLooter = {
-    version = "0.2.1",
+    version = "0.2.2",
     ready = false,
 }
 

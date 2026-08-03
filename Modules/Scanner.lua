@@ -44,47 +44,32 @@ local function isItemObject(obj)
     return isA(obj, CLASS_ITEM_OBJECT) or isA(obj, CLASS_ITEM_OBJECT_ALIAS)
 end
 
--- An entity found in the world is not always the thing that owns the items:
--- a dropped item is an ItemObject whose owner is the gameItemDropObject holding
--- the inventory. Mirrors what the loot marker code has to do.
+-- An entity found in the world is rarely the thing that owns the items. An item
+-- lying on a table or the floor is a visual ItemObject; the inventory lives on
+-- the item drop it is connected to (item.swift:20-22):
+--     public final native const func IsConnectedWithDrop() -> Bool;
+--     public final native const func GetConnectedItemDrop() -> wref<gameItemDropObject>;
+-- Using only GetOwner() here is what made loose world items unlootable.
 local function resolveHolder(obj)
     if obj == nil then
         return nil
     end
 
     if isItemObject(obj) then
-        local ok, owner = pcall(obj.GetOwner, obj)
-        if ok and owner ~= nil and isA(owner, CLASS_ITEM_DROP) then
+        local dropOk, drop = pcall(function()
+            return obj:GetConnectedItemDrop()
+        end)
+        if dropOk and drop ~= nil then
+            return drop
+        end
+
+        local ownerOk, owner = pcall(obj.GetOwner, obj)
+        if ownerOk and owner ~= nil and isA(owner, CLASS_ITEM_DROP) then
             return owner
         end
     end
 
     return obj
-end
-
-local function isLootCandidate(obj)
-    if obj == nil then
-        return false
-    end
-
-    -- gameLootContainerBase covers gameContainerObjectBase and, through it,
-    -- gameContainerObjectSingleItem. gameLootBag derives straight from gameObject,
-    -- so it needs its own check.
-    if isA(obj, CLASS_ITEM_DROP)
-        or isA(obj, "gameLootBag")
-        or isA(obj, "gameLootContainerBase") then
-        return true
-    end
-
-    -- Corpses: a living NPC must never be looted.
-    if isA(obj, "ScriptedPuppet") then
-        local ok, dead = pcall(function()
-            return obj:IsDead() or ScriptedPuppet.IsDefeated(obj)
-        end)
-        return ok and dead == true
-    end
-
-    return false
 end
 
 -- Number of stacks, not units: 45 rounds of ammo count as one entry, which keeps
@@ -100,6 +85,40 @@ local function countStacks(holder)
     end
 
     return #list
+end
+
+local function isLootCandidate(obj)
+    if obj == nil then
+        return false
+    end
+
+    -- Never the player, never anything they are driving.
+    if isA(obj, "PlayerPuppet") or isA(obj, "vehicleBaseObject") then
+        return false
+    end
+
+    -- Creatures: corpses only. A living NPC must never be emptied.
+    if isA(obj, "ScriptedPuppet") then
+        local ok, dead = pcall(function()
+            return obj:IsDead() or ScriptedPuppet.IsDefeated(obj)
+        end)
+        return ok and dead == true
+    end
+
+    -- Known loot classes. gameLootContainerBase covers gameContainerObjectBase and,
+    -- through it, gameContainerObjectSingleItem; gameLootBag derives straight from
+    -- gameObject and needs its own check.
+    if isA(obj, CLASS_ITEM_DROP)
+        or isA(obj, "gameLootBag")
+        or isA(obj, "gameLootContainerBase") then
+        return true
+    end
+
+    -- Everything else is judged by whether it actually holds items. A class
+    -- whitelist turned out to be the wrong instinct: items on tables, shelves and
+    -- inside furniture arrive as classes not worth enumerating, and were being
+    -- discarded in silence. The inventory is the honest test.
+    return countStacks(obj) > 0
 end
 
 local function hasQuestLoot(holder)
@@ -392,9 +411,21 @@ local function collect(entities, player, radius)
     local objects = {}
     local stacks = 0
     local skippedQuest = 0
+    local rejected = {}
 
     for _, entity in ipairs(entities) do
         local holder = resolveHolder(entity)
+
+        -- With the debug log on, note what was discarded and under which class.
+        -- If something lootable is ever missed again, this names it directly
+        -- instead of leaving us guessing.
+        if Log.IsEnabled() and holder ~= nil and not isLootCandidate(holder) then
+            local nameOk, className = pcall(function()
+                return tostring(holder:GetClassName().value)
+            end)
+            local key = (nameOk and className) or "unknown"
+            rejected[key] = (rejected[key] or 0) + 1
+        end
 
         if holder ~= nil and isLootCandidate(holder) then
             local key = entityKey(holder)
@@ -426,6 +457,14 @@ local function collect(entities, player, radius)
     table.sort(objects, function(a, b)
         return a.distance < b.distance
     end)
+
+    if Log.IsEnabled() and next(rejected) ~= nil then
+        local parts = {}
+        for className, count in pairs(rejected) do
+            parts[#parts + 1] = className .. "=" .. tostring(count)
+        end
+        Log.DebugThrottled("scan.rejected", 5.0, "not lootable: " .. table.concat(parts, " "))
+    end
 
     return objects, stacks, skippedQuest
 end

@@ -151,12 +151,19 @@ in the general query only shows up in combat. See RESEARCH §9.
 A fourth source over `MappinSystem:GetMappins` was implemented and then deleted: on
 game 2.x it returns records with no entity handle.
 
-Candidate filtering uses native RTTI names: `gameItemDropObject`, `gameLootBag`,
-`gameLootContainerBase`, `gameContainerObjectBase`, `gameContainerObjectSingleItem`, and
-`ScriptedPuppet` only when dead or defeated. A dropped item is a `gameItemObject` whose
-owner holds the inventory, so the holder is resolved first; the script alias `ItemObject`
-is tried as a backstop in case `IsA` resolves aliases too. Objects with no items are
+Candidate filtering rejects the player, vehicles and living NPCs outright, accepts corpses
+and the known loot classes (`gameItemDropObject`, `gameLootBag`, `gameLootContainerBase`
+and everything deriving from it), and then falls back to a simple question for anything
+else: does it hold items? A class whitelist was the original design and it silently
+discarded items lying on tables and inside furniture, so the inventory is now the test.
+
+Before any of that, the holder is resolved. An item in the world is a visual
+`gameItemObject`; its inventory lives on the item drop it is connected to, reachable via
+`GetConnectedItemDrop()` (`GetOwner()` alone does not find it). Objects with no items are
 dropped, distance is `Vector4.Distance` to the player.
+
+With the debug log on, every discarded object is counted by class name, so a future miss
+identifies itself rather than needing another investigation.
 
 Entities can go stale between the world query and the filtering pass, so every handle
 access there is individually protected — one dead handle must not abort a scan that runs
