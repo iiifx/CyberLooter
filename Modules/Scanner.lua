@@ -72,19 +72,70 @@ local function resolveHolder(obj)
     return obj
 end
 
--- Number of stacks, not units: 45 rounds of ammo count as one entry, which keeps
--- the number on the indicator readable.
-local function countStacks(holder)
+-- Some items must never be moved into the inventory, because the game does not
+-- put them there itself. Heavy weapons - the mounted machine guns and miniguns
+-- you carry in your hands - live in the WeaponHeavy equip area and are meant to
+-- be picked up through the interaction that equips them. Transferring one as if
+-- it were loot leaves the player in the carrying pose holding nothing at all.
+function Scanner.IsRestrictedItem(itemData)
+    local ok, restricted = pcall(function()
+        local itemType = itemData:GetItemType()
+        if Equals(itemType, gamedataItemType.Wea_HeavyMachineGun)
+            or Equals(itemType, gamedataItemType.Wea_LightMachineGun) then
+            return true
+        end
+
+        -- Weapons discarded when empty are the same kind of hand-carried pickup.
+        if itemData:HasTag("DiscardOnEmpty") then
+            return true
+        end
+
+        local record = RPGManager.GetItemRecord(ItemID.GetTDBID(itemData:GetID()))
+        if record ~= nil then
+            local area = record:EquipArea()
+            if area ~= nil and Equals(area:Type(), gamedataEquipmentArea.WeaponHeavy) then
+                return true
+            end
+        end
+
+        return false
+    end)
+
+    -- If the question cannot be answered, leave the item alone rather than risk
+    -- repeating the broken-state bug.
+    if not ok then
+        Log.DebugThrottled("scan.restricted", 30, "restricted check failed: " .. tostring(restricted))
+        return true
+    end
+
+    return restricted == true
+end
+
+-- Counts stacks rather than units: 45 rounds of ammo is one entry, which keeps
+-- the number on the indicator readable. Restricted items are counted separately
+-- and never contribute to what the mod offers to take.
+local function inspect(holder)
     local ok, list = pcall(function()
         local _, items = Game.GetTransactionSystem():GetItemList(holder)
         return items
     end)
 
     if not ok or list == nil then
-        return 0
+        return 0, 0
     end
 
-    return #list
+    local lootable = 0
+    local restricted = 0
+
+    for _, itemData in ipairs(list) do
+        if Scanner.IsRestrictedItem(itemData) then
+            restricted = restricted + 1
+        else
+            lootable = lootable + 1
+        end
+    end
+
+    return lootable, restricted
 end
 
 local function isLootCandidate(obj)
@@ -114,11 +165,13 @@ local function isLootCandidate(obj)
         return true
     end
 
-    -- Everything else is judged by whether it actually holds items. A class
-    -- whitelist turned out to be the wrong instinct: items on tables, shelves and
-    -- inside furniture arrive as classes not worth enumerating, and were being
-    -- discarded in silence. The inventory is the honest test.
-    return countStacks(obj) > 0
+    -- Everything else is judged by whether it actually holds items the mod is
+    -- allowed to take. A class whitelist turned out to be the wrong instinct:
+    -- items on tables, shelves and inside furniture arrive as classes not worth
+    -- enumerating, and were being discarded in silence. The inventory is the
+    -- honest test.
+    local lootable = inspect(obj)
+    return lootable > 0
 end
 
 local function hasQuestLoot(holder)
@@ -435,7 +488,7 @@ local function collect(entities, player, radius)
 
                 local dist = distanceTo(playerPos, holder)
                 if dist ~= nil and dist <= radius then
-                    local count = countStacks(holder)
+                    local count, restricted = inspect(holder)
 
                     if count > 0 then
                         if Config.values.skipQuestItems and hasQuestLoot(holder) then
@@ -445,9 +498,15 @@ local function collect(entities, player, radius)
                                 holder = holder,
                                 distance = dist,
                                 stacks = count,
+                                -- Mixed contents: the bulk transfer would take the
+                                -- restricted item too, so this one goes item by item.
+                                restricted = restricted > 0,
                             }
                             stacks = stacks + count
                         end
+                    elseif restricted > 0 then
+                        Log.DebugThrottled("scan.restrictedonly", 10.0,
+                            "skipping object holding only hand-carried items")
                     end
                 end
             end

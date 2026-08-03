@@ -21,7 +21,9 @@ other mods. Installing CyberLooter itself is copying one folder.
 - Works on corpses, containers, stashes and items lying on the ground. Aiming at them is
   not required — the search is by distance, not by line of sight.
 - Picks up everything the game allows, junk and broken weapons included. Quest loot is
-  skipped by default so that scripted quest objects are never disturbed.
+  skipped by default so that scripted quest objects are never disturbed, and hand-carried
+  heavy weapons are always left alone — the game equips those into your hands rather than
+  your backpack, and moving one as loot leaves the character holding nothing.
 - Shows the count of available loot as a **native game button prompt** in the usual place
   on screen (`Loot All · 7`), using the engine's own input-hint system, so it matches the
   game's styling and hold animation. No prompt appears when there is nothing to pick up.

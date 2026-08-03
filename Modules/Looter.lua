@@ -24,9 +24,9 @@ local function totalQuantity(holder)
     return quantity
 end
 
--- Fallback for the case where TransferAllItems turns out not to work on some
--- class of object. Slower and less faithful, so it is only used if the primary
--- path visibly moved nothing.
+-- Used in two situations: as a fallback when TransferAllItems moves nothing, and
+-- deliberately whenever an object also holds something the mod must not take, so
+-- that the rest can still be collected around it.
 local function transferItemByItem(holder, player)
     local moved = 0
 
@@ -38,17 +38,20 @@ local function transferItemByItem(holder, player)
         end
 
         for _, itemData in ipairs(items) do
-            local itemID = itemData:GetID()
-            local quantity = itemData:GetQuantity()
-            if quantity == nil or quantity < 1 then
-                quantity = 1
-            end
+            -- Hand-carried weapons are left exactly where they are.
+            if not Scanner.IsRestrictedItem(itemData) then
+                local itemID = itemData:GetID()
+                local quantity = itemData:GetQuantity()
+                if quantity == nil or quantity < 1 then
+                    quantity = 1
+                end
 
-            -- Strictly true only: a nil return means "unknown", and counting that
-            -- as success would let the fallback report loot it never moved.
-            local transferred = transactionSystem:TransferItem(holder, player, itemID, quantity)
-            if transferred == true then
-                moved = moved + 1
+                -- Strictly true only: a nil return means "unknown", and counting
+                -- that as success would let the fallback report loot it never moved.
+                local transferred = transactionSystem:TransferItem(holder, player, itemID, quantity)
+                if transferred == true then
+                    moved = moved + 1
+                end
             end
         end
     end)
@@ -69,6 +72,17 @@ local function lootOne(entry, player)
     -- have been emptied in the meantime. Not a success, not a failure.
     if before == 0 then
         return false, "already empty", 0
+    end
+
+    -- Objects holding a hand-carried weapon alongside ordinary loot cannot go
+    -- through the bulk transfer: it would move the weapon too and leave the
+    -- player in the carrying pose with nothing in their hands.
+    if entry.restricted then
+        local moved = transferItemByItem(holder, player)
+        if moved > 0 then
+            return true, "itemByItem(restricted)", moved
+        end
+        return false, "nothing movable", 0
     end
 
     local ok, err = pcall(function()

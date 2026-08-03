@@ -176,7 +176,15 @@ ended up being selected.
 
 ### Looter.lua
 
-Per object: quest check, then `TransactionSystem:TransferAllItems(holder, player)`.
+Per object: quest check, restricted-content check, then
+`TransactionSystem:TransferAllItems(holder, player)`.
+
+Restricted items are those the game equips into the player's hands rather than into the
+inventory — heavy weapons, identified by the `WeaponHeavy` equip area, the machine-gun item
+types, or the `DiscardOnEmpty` tag. Bulk-transferring one leaves the player stuck in the
+carrying pose holding an invisible weapon, so an object that also holds ordinary loot goes
+item by item instead, and an object holding nothing else is skipped entirely. If the check
+itself cannot be answered, the item is treated as restricted.
 Success is judged by the object actually emptying — `GetTotalItemQuantity` before and
 after — because that is the only honest signal available.
 
