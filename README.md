@@ -211,7 +211,13 @@ while it runs.
 
 It is **not part of the mod** and installs nothing into the game — run the file, and quit
 it from the tray icon when you are done. Settings are at the top of the file: the forward
-key, the double-tap window and the cancel keys.
+key, the double-tap window, the cancel keys and the dodge guard.
+
+That last one matters. Vanilla Cyberpunk already uses double-tap forward for a dodge roll
+(`<multitap action="DodgeForward" count="2" uptime="0.2" downtime="0.2" />` in the game's
+own `inputContexts.xml`), so the script swallows the second tap and only takes the key over
+250 ms later. The game never sees two taps close enough together to dodge, at the cost of a
+quarter-second before the character sets off.
 
 Why it is a separate script rather than a feature of the mod: the game's movement axes are
 read-only from the scripting side. Locomotion reads them via
