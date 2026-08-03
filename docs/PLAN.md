@@ -5,7 +5,8 @@ by holding a single key.
 
 ## Requirements
 
-1. A sweep triggers on **holding** the key (`F` by default), not on a single press.
+1. A sweep triggers on **holding** the key, not on a single press. No key is bound by
+   default — CET bindings start empty — and the interact key (`F`) is the recommended choice.
    The hold is short (~0.35 s threshold) and the sweep is one-shot — the key can be
    released immediately, there is nothing to keep holding.
 2. It only triggers when **no vanilla action is bound to the key at that moment**.
@@ -109,12 +110,22 @@ something the sweep would refuse to do. Blocks on: no player, fullscreen menu
 (`UI_System.IsInMenu`), photo mode, and — when `respectInteraction` is on — a live vanilla
 interaction (`UIInteractions.InteractionChoiceHub.choices`).
 
+The blackboard returns a Variant, which has to be unpacked with `FromVariant` before its
+fields exist; both the packed and already-unpacked shapes are accepted. If the read fails
+outright, the mod keeps working (failing closed would disable it entirely) but says so
+loudly once in the log and permanently in the settings window, because a silently inactive
+guard is worse than a missing one.
+
 ### Input.lua
 
 `registerInput("cyberlooter_sweep", ...)` with an `isDown` callback. Press records the
 moment, `onUpdate` accumulates the duration, reaching `holdTime` fires exactly one sweep
 and blocks repeats until release. `IsBound`/`GetBind` drive the "no key assigned" warning
 and the key name in the fallback indicator.
+
+The gate is evaluated before the hold is consumed, so a hold that lands while a vanilla
+prompt is up stays live and fires the moment the gate opens, rather than being burned and
+requiring a fresh press.
 
 Registration happens at load time, never from `onInit` — see RESEARCH §11.
 
@@ -128,21 +139,37 @@ for the session and named in the log and the settings window:
 2. `MappinSystem:GetMappins(...)`;
 3. a passive registry fed by `GameplayMappinController` observers.
 
-Candidate filtering: `gameItemDropObject`, `gameLootBag`, `gameLootContainerBase`,
-`gameContainerObjectBase`, `ContainerObjectSingleItem`, and `ScriptedPuppet` only when
-dead or defeated. A dropped item is an `ItemObject` whose owner holds the inventory, so the
-holder is resolved before anything else. Objects with no items are dropped, distance is
-`Vector4.Distance` to the player.
+Candidate filtering uses native RTTI names: `gameItemDropObject`, `gameLootBag`,
+`gameLootContainerBase`, `gameContainerObjectBase`, `gameContainerObjectSingleItem`, and
+`ScriptedPuppet` only when dead or defeated. A dropped item is a `gameItemObject` whose
+owner holds the inventory, so the holder is resolved first; the script alias `ItemObject`
+is tried as a backstop in case `IsA` resolves aliases too. Objects with no items are
+dropped, distance is `Vector4.Distance` to the player.
 
-Results are cached for 0.3 s so the indicator does not query the world every frame.
+Entities can go stale between the world query and the filtering pass, so every handle
+access there is individually protected — one dead handle must not abort a scan that runs
+several times per second.
+
+Results are cached for 0.3 s so the indicator does not query the world every frame. The
+marker registry that strategy 3 feeds on is pruned on its own 30 s schedule rather than
+from inside the strategy, because the observers keep filling it no matter which strategy
+ended up being selected.
 
 ### Looter.lua
 
 Per object: quest check, then `TransactionSystem:TransferAllItems(holder, player)`.
 Success is judged by the object actually emptying — `GetTotalItemQuantity` before and
-after — because that is the only honest signal available. If nothing moved, it falls back
-to per-item `GetItemList` + `TransferItem` and records that in the log. Capped at
-`maxObjectsPerSweep` objects per sweep; every call is wrapped in `pcall`.
+after — because that is the only honest signal available.
+
+The quantity check has three edge cases that are handled explicitly rather than lumped in
+with failure: an object already empty before the call (the scan cache is up to 0.3 s old)
+is neither success nor failure; a quantity of `-1` afterwards means the object despawned
+once emptied, so an error-free call is taken at its word and marked `unverified` in the
+log; only a genuinely unchanged, readable quantity triggers the per-item
+`GetItemList` + `TransferItem` fallback. That fallback counts only transfers that returned
+true, so it cannot report loot it never moved.
+
+Capped at `maxObjectsPerSweep` objects per sweep; every call is wrapped in `pcall`.
 
 ### Hint.lua — primary path, engine-rendered
 
@@ -163,13 +190,20 @@ Game.SendInputHintData(true, hint, "GameplayInputHelper")
   updating (assumption, RESEARCH §10), `hintRefreshHack` takes it down first.
 - **Key glyph.** `action = "Choice1"` is correct while our binding sits on the interact
   key. `hintUseGameAction` turns that off and spells the assigned key out in the text.
-- If the engine call fails at all, the module says so once and switches to the ImGui path.
+- **Liveness.** The engine can drop its hint container without telling us (save load,
+  fast travel, UI rebuild), so the hint is re-sent every few seconds even when the text has
+  not changed. Cheap, and it heals a prompt that silently disappeared.
+- If the engine call fails at all, the module says so once and raises its own runtime
+  fallback flag. It deliberately does not write to the user's settings, so a one-off
+  failure cannot end up saved in `config.json`.
 
 ### Hud.lua — fallback path, ImGui
 
-Enabled by `useImGuiFallback`. `onDraw` runs with the overlay closed (RESEARCH §8).
-A borderless, background-less, input-less window: the bound key, the count, and frame
-brightness as hold progress. Position is a configurable offset from screen centre.
+Enabled by `useImGuiFallback`, or automatically when the engine hint path has failed this
+session. `onDraw` runs with the overlay closed (RESEARCH §8). A borderless,
+background-less, input-less window: the bound key, the count, and frame brightness as hold
+progress. Position is a configurable offset from screen centre, obtained via CET's
+`GetDisplayResolution()`.
 
 ### Log.lua
 

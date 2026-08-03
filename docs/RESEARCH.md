@@ -7,7 +7,7 @@ as an assumption.
 
 | Source | What it provides |
 |---|---|
-| [In-Question/MOD_Development_Reference](https://github.com/In-Question/MOD_Development_Reference) | Decompiled game scripts (1755 `.swift` files) plus Lua definitions for the CET API and game classes |
+| [In-Question/MOD_Development_Reference](https://github.com/In-Question/MOD_Development_Reference) | Decompiled game scripts (1755 `.swift` files) plus Lua definitions for the CET API and game classes. Caveat: the RTTI definitions were dumped from game 2.01 / CET 1.27.1 and the decompiled scripts are older still, so signatures can lag behind 2.3 — §9 documents one case where they already do |
 | [maximegmd/CyberEngineTweaks](https://github.com/maximegmd/CyberEngineTweaks) | CET source. Current release v1.37.1 (2025-09-28) |
 | [rodikh/BetterLootMarkers](https://github.com/rodikh/BetterLootMarkers-Cyberpunk-mod) | A working CET loot mod, used purely as a reference for which APIs exist. No code is copied — the project carries no license |
 
@@ -42,7 +42,8 @@ The function is reachable from Lua, per
 function gameTransactionSystem:TransferAllItems(source, target) return end
 ```
 
-In CET that is `Game.GetTransactionSystem():TransferAllItems(target, player)`.
+In CET that is `Game.GetTransactionSystem():TransferAllItems(source, player)` —
+the first argument is the object being emptied, the second is the receiver.
 
 ## 2. The "looted" state cleans itself up — VERIFIED
 
@@ -182,7 +183,11 @@ is unknown.
 
 **B. Mappin system.** `gamemappinsMappinSystem:GetMappins(targetType)`.
 Upside: returns precisely what the game itself treats as nearby loot.
-Risk: signature and return shape are undocumented.
+Risk: the return shape changed between builds. The decompiled scripts show
+`[ref<IMappin>]`, which exposes `GetEntityID()`, but the 2.x RTTI definitions show
+`gamemappinsMappinEntry` records carrying only `id`, `type` and `worldPosition` — no
+entity handle, and therefore nothing to loot. The implementation handles both shapes and
+logs which one it actually saw, so this strategy can be deleted outright once confirmed.
 
 **C. Mappin controller hook.** The BetterLootMarkers approach: `ObserveAfter` on
 `GameplayMappinController.UpdateVisibility`, then `mappin:GetEntityID()` →

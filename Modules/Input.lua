@@ -26,14 +26,8 @@ function Input.Init(deps)
 
     registerInput(BIND_ID, BIND_LABEL, function(isDown)
         _isDown = isDown and true or false
-
-        if _isDown then
-            _heldFor = 0.0
-            _fired = false
-        else
-            _heldFor = 0.0
-            _fired = false
-        end
+        _heldFor = 0.0
+        _fired = false
     end)
 end
 
@@ -74,14 +68,17 @@ function Input.Tick(dt)
         return
     end
 
-    -- One sweep per hold: the key can be released immediately afterwards.
-    _fired = true
-
+    -- The gate is checked before the hold is consumed. If the player is holding
+    -- the key while a vanilla prompt is up, the hold stays live and fires the
+    -- moment the gate opens, instead of being burned and needing a fresh press.
     local actionable, reason = State.IsActionable(Config.values.respectInteraction)
     if not actionable then
-        Log.DebugThrottled("input.blocked", 5.0, "hold ignored: " .. tostring(reason))
+        Log.DebugThrottled("input.blocked", 5.0, "hold on standby: " .. tostring(reason))
         return
     end
+
+    -- One sweep per hold: the key can be released immediately afterwards.
+    _fired = true
 
     if _onSweep ~= nil then
         local ok, err = pcall(_onSweep)

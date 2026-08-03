@@ -4,6 +4,10 @@ local State = {}
 
 local Log
 
+-- Set when the vanilla-interaction guard cannot read its blackboard, so the
+-- settings window can admit that the guard is not actually running.
+State.interactionCheckBroken = false
+
 function State.Init(deps)
     Log = deps.Log
 end
@@ -48,26 +52,53 @@ end
 
 -- True when the game itself has an interaction prompt up (door, corpse, ladder...).
 -- Verified in player.swift:905 - a non-empty choices array means a live prompt.
+--
+-- The blackboard hands back a Variant (opaque userdata), so it has to be unpacked
+-- with FromVariant before the struct fields exist. Older CET builds unpack it on
+-- the way out, hence both shapes are accepted.
 function State.HasVanillaInteraction()
     local ok, result = pcall(function()
         local defs = GetAllBlackboardDefs().UIInteractions
         local bb = Game.GetBlackboardSystem():Get(defs)
         if bb == nil then
+            return nil
+        end
+
+        local raw = bb:GetVariant(defs.InteractionChoiceHub)
+        if raw == nil then
             return false
         end
 
-        local hub = bb:GetVariant(defs.InteractionChoiceHub)
+        local hub = raw
+        if hub.choices == nil and FromVariant ~= nil then
+            local unpacked, value = pcall(FromVariant, raw)
+            if unpacked and value ~= nil then
+                hub = value
+            end
+        end
+
         if hub == nil or hub.choices == nil then
-            return false
+            return nil
         end
 
         return #hub.choices > 0
     end)
 
-    if not ok then
-        Log.DebugThrottled("state.interaction", 30,
-            "InteractionChoiceHub check failed: " .. tostring(result))
+    -- nil means the read itself did not work, which is different from "no prompt".
+    -- The mod stays usable (failing closed would disable it outright), but the
+    -- broken state is surfaced loudly instead of hiding in a disabled debug log.
+    if not ok or result == nil then
+        if not State.interactionCheckBroken then
+            State.interactionCheckBroken = true
+            Log.Warn("cannot read InteractionChoiceHub - the 'ignore key during vanilla prompts' "
+                .. "guard is inactive this session: " .. tostring(result))
+        end
         return false
+    end
+
+    if State.interactionCheckBroken then
+        State.interactionCheckBroken = false
+        Log.Info("InteractionChoiceHub became readable, vanilla prompt guard is active again")
     end
 
     return result and true or false

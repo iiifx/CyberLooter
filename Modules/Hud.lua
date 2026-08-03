@@ -6,6 +6,7 @@
 local Hud = {}
 
 local Config
+local Hint
 
 local WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar + ImGuiWindowFlags.NoResize
     + ImGuiWindowFlags.NoMove + ImGuiWindowFlags.NoScrollbar + ImGuiWindowFlags.NoInputs
@@ -14,11 +15,39 @@ local WINDOW_FLAGS = ImGuiWindowFlags.NoTitleBar + ImGuiWindowFlags.NoResize
 
 function Hud.Init(deps)
     Config = deps.Config
+    Hint = deps.Hint
+end
+
+-- CET exposes GetDisplayResolution(); ImGui.GetDisplaySize() is not part of its
+-- bindings, so it is only tried as a second guess.
+local function displaySize()
+    if GetDisplayResolution ~= nil then
+        local ok, width, height = pcall(GetDisplayResolution)
+        if ok and width ~= nil and height ~= nil then
+            return width, height
+        end
+    end
+
+    local ok, width, height = pcall(function()
+        return ImGui.GetDisplaySize()
+    end)
+
+    if ok and width ~= nil and height ~= nil then
+        return width, height
+    end
+
+    return 1920, 1080
 end
 
 -- count: stacks in radius, progress: 0..1 hold progress, bind: assigned key.
 function Hud.Draw(count, progress, bind)
-    if not Config.values.showIndicator or not Config.values.useImGuiFallback then
+    if not Config.values.showIndicator then
+        return
+    end
+
+    -- Drawn either because the user asked for it, or because the engine hint
+    -- failed this session and something has to stand in for it.
+    if not Config.values.useImGuiFallback and not Hint.forcedFallback then
         return
     end
 
@@ -26,7 +55,7 @@ function Hud.Draw(count, progress, bind)
         return
     end
 
-    local width, height = ImGui.GetDisplaySize()
+    local width, height = displaySize()
     local x = width * 0.5 + Config.values.indicatorOffsetX
     local y = height * 0.5 + Config.values.indicatorOffsetY
 

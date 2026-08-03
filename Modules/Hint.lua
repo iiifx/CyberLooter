@@ -14,9 +14,20 @@ local SOURCE = "CyberLooter"
 local CONTAINER = "GameplayInputHelper"
 local GAME_ACTION = "Choice1"
 
+-- The engine can drop its hint container without telling us (save load, fast
+-- travel, UI rebuild), which would leave the mod believing a prompt is on screen
+-- that no longer exists. Re-sending periodically costs nothing and heals that.
+local RESEND_INTERVAL = 3.0
+
 local _visible = false
 local _shownLabel = nil
+local _shownAt = 0.0
+local _time = 0.0
 local _available = true
+
+-- Runtime-only: a failure of the engine path must not silently rewrite the
+-- user's saved preferences.
+Hint.forcedFallback = false
 
 local function buildData(label)
     local data = gameuiInputHintData.new()
@@ -40,8 +51,8 @@ local function send(show, label)
     if not ok then
         if _available then
             _available = false
+            Hint.forcedFallback = true
             Log.Warn("native input hint unavailable, falling back to ImGui: " .. tostring(err))
-            Config.values.useImGuiFallback = true
         end
         return false
     end
@@ -73,7 +84,7 @@ function Hint.Update(count, bind)
         label = string.format("%s [%s] · %d", Config.values.hintLabel, tostring(bind or "?"), count)
     end
 
-    if _visible and _shownLabel == label then
+    if _visible and _shownLabel == label and (_time - _shownAt) < RESEND_INTERVAL then
         return
     end
 
@@ -87,8 +98,13 @@ function Hint.Update(count, bind)
     if send(true, label) then
         _visible = true
         _shownLabel = label
+        _shownAt = _time
         Log.DebugThrottled("hint.show", 5.0, "hint shown: " .. label)
     end
+end
+
+function Hint.Tick(dt)
+    _time = _time + dt
 end
 
 function Hint.Clear()

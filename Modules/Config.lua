@@ -171,6 +171,17 @@ function Config.DrawWindow(status)
     ImGui.Text("Objects in radius: " .. tostring(status.objects))
     ImGui.Text("Stacks in radius: " .. tostring(status.stacks))
     ImGui.Text("Last sweep: " .. tostring(status.lastSweep))
+    ImGui.Text("Marker registry entries: " .. tostring(status.registrySize))
+
+    -- Failures that would otherwise be invisible: the mod keeps working, but not
+    -- the way the settings above claim it does.
+    if status.interactionGuardBroken then
+        ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Vanilla prompt guard is inactive (blackboard unreadable).")
+    end
+
+    if status.hintForcedFallback then
+        ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Engine prompt failed, using the ImGui indicator.")
+    end
 
     if ImGui.Button("Clear log") then
         Log.Reset()

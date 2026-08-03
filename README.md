@@ -17,16 +17,18 @@ Installing the mod means copying one folder.
 - Hold your chosen key briefly (0.35 s by default) — every lootable object within the
   radius (5 m by default) is emptied into your inventory in one go. Release the key
   immediately; there is nothing to keep holding.
-- Works on corpses, containers, stashes and items lying on the ground, including through
-  walls and behind your back — you do not have to look at anything.
+- Works on corpses, containers, stashes and items lying on the ground. Aiming at them is
+  not required — the search is by distance, not by line of sight.
 - Picks up everything the game allows, junk and broken weapons included. Quest loot is
   skipped by default so that scripted quest objects are never disturbed.
 - Shows the count of available loot as a **native game button prompt** in the usual place
-  on screen (`Loot All · 7`), with the vanilla hold animation and the correct key glyph
-  for keyboard or gamepad. No prompt appears when there is nothing to pick up.
+  on screen (`Loot All · 7`), using the engine's own input-hint system, so it matches the
+  game's styling and hold animation. No prompt appears when there is nothing to pick up.
 - Stays out of the way: when the game itself shows an interaction prompt (a door, a
   terminal, a corpse you are looking at), the key behaves exactly as it normally does and
   the mod does nothing.
+- If a single hold hits the per-sweep object limit, the rest stays where it is — just
+  hold the key again.
 
 ## Installation
 
@@ -56,11 +58,14 @@ The settings window appears together with the CET overlay. Settings are written 
 | Use game key icon | on | Borrow the key glyph from the game's interact action |
 | Re-send hint instead of updating | off | Workaround if prompts ever stack up instead of updating |
 | ImGui fallback indicator | off | Backup indicator if the engine prompt does not work |
+| Offset X / Offset Y | 0 / 60 px | Position of the fallback indicator, shown only when the fallback is enabled |
 | Write cyberlooter.log | off | Verbose diagnostic log |
 
-The prompt text is the `hintLabel` field in `config.json`. It is plain text rendered by
-the game, so it can be translated — but use characters the game's current language pack
-actually has, otherwise you will get empty boxes.
+`config.json` is created the first time settings are changed and the overlay is closed.
+
+The prompt text is the `hintLabel` field in `config.json` — there is no UI field for it.
+It is plain text rendered by the game, so it can be translated, but use characters the
+game's current language pack actually has, otherwise you will get empty boxes.
 
 ## How it works
 
@@ -74,6 +79,11 @@ TransactionSystem.TransferAllItems(source, player)
 Because of that, everything else follows on its own: the loot marker disappears, the
 highlight is removed, the object is dropped from the HUD and the "emptied" effect plays —
 all of it is driven by the game's own inventory events, not re-implemented here.
+
+There is one exception. If that call visibly moves nothing on some class of object, the
+mod falls back to transferring items one at a time and records that in the log. It is an
+emergency path, not the normal one, and it exists so that a single unsupported object type
+cannot make the mod useless.
 
 The indicator is not drawn by the mod either. It is handed to the engine's own input-hint
 system (`Game.SendInputHintData`), which is what renders every vanilla button prompt, so
@@ -99,10 +109,25 @@ strategy, the current object and stack count in radius, and the result of the la
 
 ## Compatibility
 
-- Built and verified against Cyberpunk 2077 2.3 and Cyber Engine Tweaks v1.37.1.
-- Compatible with loot marker mods such as BetterLootMarkers — this mod only reads the
-  same data and never modifies markers itself.
+- Written against Cyberpunk 2077 2.3 and Cyber Engine Tweaks v1.37.1. Every game API it
+  uses was checked against the game's decompiled scripts and the CET source, but the mod
+  has not yet been through a full in-game test pass — see the status note below.
+- It should coexist with loot marker mods such as BetterLootMarkers: this mod reads marker
+  data and never modifies markers itself. Not verified in practice.
 - Does not modify save data, game files or archives. Removing the folder removes the mod.
+
+## Status
+
+This is version 0.1.0 and it has not been run in the game yet: it was written on a machine
+that cannot launch Cyberpunk 2077. Everything it does was verified statically against the
+game's decompiled scripts, and every uncertain call has a fallback and a log entry, but
+expect rough edges on the first run.
+
+Three things in particular are unverified and may need adjusting:
+finding loot around the player (three strategies are implemented, the one that works is
+picked automatically and named in the settings window), whether the prompt updates cleanly
+when the count changes, and whether the native hold animation lines up with the configured
+hold time. If something misbehaves, the log will say which of these it was.
 
 ## License
 

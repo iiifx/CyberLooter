@@ -2,17 +2,21 @@
 --
 -- This is the one piece the research could not settle statically, so three
 -- independent strategies are implemented and tried in order. The first one that
--- returns anything is remembered for the session and reported in the log.
+-- yields actual lootable objects (not merely raw entities) is locked in for the
+-- session and reported in the log; until then every strategy is retried.
 
 local Scanner = {}
 
 local Log, Config, State
 
 local CACHE_SECONDS = 0.3
+local REGISTRY_TTL = 60.0
+local REGISTRY_PRUNE_INTERVAL = 30.0
 
 local _time = 0.0
 local _cacheStamp = -1.0
 local _cache = { objects = {}, stacks = 0 }
+local _nextPrune = REGISTRY_PRUNE_INTERVAL
 
 -- Strategy C keeps its own passive registry, filled by observers.
 local _mappinRegistry = {}
@@ -21,12 +25,19 @@ local _registryCount = 0
 Scanner.strategy = "unresolved"
 Scanner.strategyLocked = false
 
+-- Native RTTI names. Script aliases such as "ItemObject" may or may not resolve
+-- through IsA, so the native name is tried first and the alias only as a backstop.
 local CLASS_ITEM_DROP = "gameItemDropObject"
-local CLASS_ITEM_OBJECT = "ItemObject"
+local CLASS_ITEM_OBJECT = "gameItemObject"
+local CLASS_ITEM_OBJECT_ALIAS = "ItemObject"
 
 local function isA(obj, className)
     local ok, result = pcall(obj.IsA, obj, className)
     return ok and result == true
+end
+
+local function isItemObject(obj)
+    return isA(obj, CLASS_ITEM_OBJECT) or isA(obj, CLASS_ITEM_OBJECT_ALIAS)
 end
 
 -- An entity found in the world is not always the thing that owns the items:
@@ -37,7 +48,7 @@ local function resolveHolder(obj)
         return nil
     end
 
-    if isA(obj, CLASS_ITEM_OBJECT) then
+    if isItemObject(obj) then
         local ok, owner = pcall(obj.GetOwner, obj)
         if ok and owner ~= nil and isA(owner, CLASS_ITEM_DROP) then
             return owner
@@ -52,11 +63,13 @@ local function isLootCandidate(obj)
         return false
     end
 
+    -- gameContainerObjectSingleItem derives from gameContainerObjectBase, so the
+    -- base check already covers it; it is listed for clarity, not necessity.
     if isA(obj, CLASS_ITEM_DROP)
         or isA(obj, "gameLootBag")
         or isA(obj, "gameLootContainerBase")
         or isA(obj, "gameContainerObjectBase")
-        or isA(obj, "ContainerObjectSingleItem") then
+        or isA(obj, "gameContainerObjectSingleItem") then
         return true
     end
 
@@ -176,6 +189,11 @@ end
 -- Strategy B: mappin system
 --------------------------------------------------------------------------------
 
+-- Note: on game 2.x GetMappins is documented to return gamemappinsMappinEntry
+-- records, which carry only id/type/worldPosition and no entity handle - there is
+-- nothing to loot from those. Older builds returned IMappin objects that do expose
+-- GetEntityID. Both shapes are handled, and the shape actually observed is logged
+-- once so the strategy can be dropped for good if it never yields anything.
 local function strategyMappins(player, radius)
     local ok, entities = pcall(function()
         local system = Game.GetMappinSystem()
@@ -189,15 +207,26 @@ local function strategyMappins(player, radius)
         end
 
         local found = {}
+        local usable = 0
+
         for _, mappin in ipairs(mappins) do
-            local entityID = mappin:GetEntityID()
-            if entityID ~= nil then
+            local gotID, entityID = pcall(function()
+                return mappin:GetEntityID()
+            end)
+
+            if gotID and entityID ~= nil then
+                usable = usable + 1
                 local entity = Game.FindEntityByID(entityID)
                 if entity ~= nil then
                     found[#found + 1] = entity
                 end
             end
         end
+
+        Log.DebugThrottled("scan.mappins.shape", 30, string.format(
+            "mappin system returned %d records, %d exposed an entity id",
+            #mappins, usable))
+
         return found
     end)
 
@@ -243,14 +272,36 @@ local function rememberMappinController(ctrl)
     end
 end
 
+-- The observers keep feeding the registry for the whole session regardless of
+-- which strategy ended up being used, so pruning has to run on its own schedule
+-- rather than inside the strategy - otherwise the table grows without bound.
+local function pruneRegistry()
+    local stale = {}
+
+    for key, entry in pairs(_mappinRegistry) do
+        if (_time - entry.stamp) > REGISTRY_TTL then
+            stale[#stale + 1] = key
+        end
+    end
+
+    for _, key in ipairs(stale) do
+        _mappinRegistry[key] = nil
+        _registryCount = _registryCount - 1
+    end
+
+    if #stale > 0 then
+        Log.DebugThrottled("scan.registry.prune", 60, string.format(
+            "registry pruned: %d dropped, %d kept", #stale, _registryCount))
+    end
+end
+
 local function strategyRegistry(player, radius)
     local found = {}
     local stale = {}
 
     for key, entry in pairs(_mappinRegistry) do
-        -- Drop entries nothing has refreshed for a while: the object is gone,
-        -- looted, or far behind us.
-        if (_time - entry.stamp) > 60.0 then
+        -- Entries nothing has refreshed for a while are gone, looted, or far behind us.
+        if (_time - entry.stamp) > REGISTRY_TTL then
             stale[#stale + 1] = key
         else
             local entity = Game.FindEntityByID(entry.id)
@@ -302,11 +353,38 @@ end
 
 function Scanner.Tick(dt)
     _time = _time + dt
+
+    if _time >= _nextPrune then
+        _nextPrune = _time + REGISTRY_PRUNE_INTERVAL
+        pruneRegistry()
+    end
+end
+
+local function entityKey(obj)
+    local ok, key = pcall(function()
+        return tostring(obj:GetEntityID().hash)
+    end)
+
+    if not ok then
+        return nil
+    end
+
+    return key
 end
 
 -- Turns raw entities into the deduplicated, filtered, in-range result set.
+-- Entities can go stale between the world query and this loop, so every step
+-- that touches a handle is allowed to fail without taking the scan down.
 local function collect(entities, player, radius)
-    local playerPos = player:GetWorldPosition()
+    local posOk, playerPos = pcall(function()
+        return player:GetWorldPosition()
+    end)
+
+    if not posOk or playerPos == nil then
+        Log.DebugThrottled("scan.playerpos", 30, "player position unavailable")
+        return {}, 0, 0
+    end
+
     local seen = {}
     local objects = {}
     local stacks = 0
@@ -316,9 +394,9 @@ local function collect(entities, player, radius)
         local holder = resolveHolder(entity)
 
         if holder ~= nil and isLootCandidate(holder) then
-            local key = tostring(holder:GetEntityID().hash)
+            local key = entityKey(holder)
 
-            if not seen[key] then
+            if key ~= nil and not seen[key] then
                 seen[key] = true
 
                 local dist = distanceTo(playerPos, holder)
@@ -366,7 +444,7 @@ function Scanner.Get()
     local radius = Config.values.radius
 
     for _, strategy in ipairs(STRATEGIES) do
-        -- Once a strategy has proven itself, stop paying for the others.
+                -- Once a strategy has proven itself, stop paying for the others.
         if not Scanner.strategyLocked or Scanner.strategy == strategy.name then
             local entities = strategy.run(player, radius)
 

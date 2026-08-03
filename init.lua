@@ -49,6 +49,13 @@ local function updateIndicator()
         return 0
     end
 
+    -- Without a binding the prompt would advertise an action the player has no
+    -- way to trigger.
+    if not Input.IsBound() then
+        Hint.Clear()
+        return 0
+    end
+
     local actionable = State.IsActionable(Config.values.respectInteraction)
     if not actionable then
         Hint.Clear()
@@ -101,6 +108,7 @@ local function main()
         end
 
         Scanner.Tick(dt)
+        Hint.Tick(dt)
         Input.Tick(dt)
 
         _lastStacks = updateIndicator()
@@ -120,6 +128,9 @@ local function main()
                 objects = #objects,
                 stacks = _lastStacks,
                 lastSweep = Looter.lastSweep,
+                registrySize = Scanner.GetRegistrySize(),
+                hintForcedFallback = Hint.forcedFallback,
+                interactionGuardBroken = State.interactionCheckBroken,
             })
         end
 

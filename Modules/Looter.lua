@@ -44,8 +44,10 @@ local function transferItemByItem(holder, player)
                 quantity = 1
             end
 
+            -- Strictly true only: a nil return means "unknown", and counting that
+            -- as success would let the fallback report loot it never moved.
             local transferred = transactionSystem:TransferItem(holder, player, itemID, quantity)
-            if transferred ~= false then
+            if transferred == true then
                 moved = moved + 1
             end
         end
@@ -58,9 +60,16 @@ local function transferItemByItem(holder, player)
     return moved
 end
 
+-- Returns: success, method, movedStacks (nil = unknown, use the scanned count).
 local function lootOne(entry, player)
     local holder = entry.holder
     local before = totalQuantity(holder)
+
+    -- Nothing there any more: the scan cache is up to 0.3s old, so the object may
+    -- have been emptied in the meantime. Not a success, not a failure.
+    if before == 0 then
+        return false, "already empty", 0
+    end
 
     local ok, err = pcall(function()
         Game.GetTransactionSystem():TransferAllItems(holder, player)
@@ -72,20 +81,39 @@ local function lootOne(entry, player)
 
     local after = totalQuantity(holder)
 
-    -- Success is measured by the object actually emptying, not by the call
-    -- returning: that is the only honest signal available here.
-    if after == 0 or (before > 0 and after >= 0 and after < before) then
-        return true, "transferAll"
+    -- Success is measured by the object actually emptying rather than by the call
+    -- returning, because that is the only honest signal available. A quantity of
+    -- -1 means the question could not be asked at all - typically the object has
+    -- already despawned after being emptied, so an error-free call is taken at
+    -- its word rather than being retried against a dead handle.
+    if before > 0 and after >= 0 and after < before then
+        return true, "transferAll", nil
+    end
+
+    if after == -1 then
+        if ok then
+            return true, "transferAll(unverified)", nil
+        end
+        return false, "handle lost", 0
+    end
+
+    if before == -1 then
+        if after == 0 then
+            return true, "transferAll", nil
+        end
+        if ok then
+            return true, "transferAll(unverified)", nil
+        end
     end
 
     local moved = transferItemByItem(holder, player)
     if moved > 0 then
         Log.DebugThrottled("loot.fallback", 10.0,
             "TransferAllItems moved nothing, item-by-item moved " .. tostring(moved))
-        return true, "itemByItem"
+        return true, "itemByItem", moved
     end
 
-    return false, "nothing moved"
+    return false, "nothing moved", 0
 end
 
 function Looter.Init(deps)
@@ -123,13 +151,14 @@ function Looter.Sweep()
 
         attempted = attempted + 1
 
-        local ok, method = lootOne(entry, player)
+        local ok, method, movedStacks = lootOne(entry, player)
+        methods[method] = (methods[method] or 0) + 1
+
         if ok then
             succeeded = succeeded + 1
-            stacks = stacks + entry.stacks
-            methods[method] = (methods[method] or 0) + 1
-        else
-            methods[method] = (methods[method] or 0) + 1
+            -- The fallback path knows exactly how much it moved; the primary path
+            -- does not, so the scanned stack count stands in for it.
+            stacks = stacks + (movedStacks or entry.stacks)
         end
     end
 
