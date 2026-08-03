@@ -135,16 +135,21 @@ Registration happens at load time, never from `onInit` — see RESEARCH §11.
 
 ### Scanner.lua
 
-Two strategies, tried in order; the first one that returns lootable objects is locked in
-for the session and named in the log and the settings window:
+Three sources run on every scan and their results are merged, deduplicated by entity id.
+The contributing sources are named in the log and in the settings window:
 
-1. `TargetingSystem:GetTargetParts` with a `TargetSearchQuery` (`maxDistance` = radius,
-   `testedSet = gameTargetingSet.Complete`) — this is the one that works in practice;
-2. a passive registry fed by `GameplayMappinController` observers, kept as a fallback.
-   Its observers stop recording once another strategy wins, so it is free while unused.
+1. `TargetingSystem:GetTargetParts` with a general `TargetSearchQuery` (`maxDistance` =
+   radius, `testedSet = gameTargetingSet.Complete`);
+2. the same call with a filter for dead, defeated and unconscious puppets — the engine
+   removes dead NPCs from the general query, so without this one corpses from a fight in
+   progress stay invisible until a reload;
+3. a passive registry fed by `GameplayMappinController` observers.
 
-A third strategy over `MappinSystem:GetMappins` was implemented and then deleted: on
-game 2.x it returns records with no entity handle. See RESEARCH §9.
+Merging rather than picking one is deliberate: none of these sees everything, and the gap
+in the general query only shows up in combat. See RESEARCH §9.
+
+A fourth source over `MappinSystem:GetMappins` was implemented and then deleted: on
+game 2.x it returns records with no entity handle.
 
 Candidate filtering uses native RTTI names: `gameItemDropObject`, `gameLootBag`,
 `gameLootContainerBase`, `gameContainerObjectBase`, `gameContainerObjectSingleItem`, and

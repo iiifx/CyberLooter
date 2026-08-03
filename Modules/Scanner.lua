@@ -1,13 +1,13 @@
 -- Finding lootable objects around the player.
 --
--- This is the one piece the research could not settle statically, so two
--- independent strategies are implemented and tried in order. The first one that
--- yields actual lootable objects (not merely raw entities) is locked in for the
--- session and reported in the log; until then both strategies are retried.
+-- There is no single API that returns everything lootable nearby, so three
+-- sources run on every scan and their results are merged and deduplicated.
+-- None of them is complete on its own - most importantly, the general targeting
+-- query stops returning enemies as soon as they die, which is exactly when their
+-- bodies become worth looting.
 --
--- A third one (the mappin system) was implemented and removed: on game 2.x it
--- hands back records with no entity handle, so there is nothing to loot from
--- them. See docs/RESEARCH.md section 9.
+-- A fourth source (the mappin system) was implemented and removed: on game 2.x it
+-- hands back records with no entity handle. See docs/RESEARCH.md section 9.
 
 local Scanner = {}
 
@@ -22,12 +22,12 @@ local _cacheStamp = -1.0
 local _cache = { objects = {}, stacks = 0 }
 local _nextPrune = REGISTRY_PRUNE_INTERVAL
 
--- Strategy B keeps its own passive registry, filled by observers.
+-- Source C keeps its own passive registry, filled by observers.
 local _mappinRegistry = {}
 local _registryCount = 0
 
-Scanner.strategy = "unresolved"
-Scanner.strategyLocked = false
+-- Which sources contributed to the last scan, for the settings window and log.
+Scanner.strategy = "no scan yet"
 
 -- Native RTTI names. Script aliases such as "ItemObject" may or may not resolve
 -- through IsA, so the native name is tried first and the alias only as a backstop.
@@ -146,10 +146,10 @@ local function distanceTo(playerPos, obj)
 end
 
 --------------------------------------------------------------------------------
--- Strategy A: targeting system spatial query
+-- Source A: general targeting system spatial query
 --------------------------------------------------------------------------------
 
-local function strategyTargeting(player, radius)
+local function sourceTargeting(player, radius)
     local ok, entities = pcall(function()
         local query = TSQ_ALL()
         query.maxDistance = radius
@@ -181,7 +181,7 @@ local function strategyTargeting(player, radius)
     end)
 
     if not ok then
-        Log.DebugThrottled("scan.targeting", 30, "strategy targeting failed: " .. tostring(entities))
+        Log.DebugThrottled("scan.targeting", 30, "targeting source failed: " .. tostring(entities))
         return nil
     end
 
@@ -189,17 +189,62 @@ local function strategyTargeting(player, radius)
 end
 
 --------------------------------------------------------------------------------
--- Strategy B: passive registry fed by loot marker controllers
+-- Source B: targeting query aimed specifically at bodies
+--------------------------------------------------------------------------------
+
+-- TSFMV is a bitfield: the mask bit is 1 << enum value.
+--   Obj_Puppet = 1  -> 2
+--   St_Dead = 11    -> 2048
+--   St_Defeated = 13 -> 8192
+--   St_Unconscious = 15 -> 32768
+local MASK_PUPPET = 2
+local MASK_NOT_ALIVE = 2048 + 8192 + 32768
+
+-- The general query drops enemies the moment they die, which left corpses from a
+-- just-finished fight unreachable until a reload. This one asks for exactly the
+-- states the general one loses.
+local function sourceTargetingDead(player, radius)
+    local ok, entities = pcall(function()
+        local query = gameTargetSearchQuery.new()
+        query.maxDistance = radius
+        query.filterObjectByDistance = true
+        query.includeSecondaryTargets = false
+        query.ignoreInstigator = true
+        query.testedSet = gameTargetingSet.Complete
+        query.searchFilter = TSF_And(TSF_All(MASK_PUPPET), TSF_Any(MASK_NOT_ALIVE))
+
+        local success, parts = Game.GetTargetingSystem():GetTargetParts(player, query)
+        if not success or parts == nil then
+            return nil
+        end
+
+        local found = {}
+        for _, part in ipairs(parts) do
+            local component = gametargetingTargetPartInfo.GetComponent(part)
+            if component ~= nil then
+                local entity = component:GetEntity()
+                if entity ~= nil then
+                    found[#found + 1] = entity
+                end
+            end
+        end
+        return found
+    end)
+
+    if not ok then
+        Log.DebugThrottled("scan.corpses", 30, "corpse source failed: " .. tostring(entities))
+        return nil
+    end
+
+    return entities
+end
+
+--------------------------------------------------------------------------------
+-- Source C: passive registry fed by loot marker controllers
 --------------------------------------------------------------------------------
 
 -- Called from the observers registered in Scanner.InstallObservers.
 local function rememberMappinController(ctrl)
-    -- Once another strategy is doing the work, the registry is dead weight:
-    -- stop recording and let the pruner drain whatever is left.
-    if Scanner.strategyLocked and Scanner.strategy ~= "registry" then
-        return
-    end
-
     local ok, err = pcall(function()
         local mappin = ctrl:GetMappin()
         if mappin == nil then
@@ -251,7 +296,7 @@ local function pruneRegistry()
     end
 end
 
-local function strategyRegistry(player, radius)
+local function sourceRegistry(player, radius)
     local found = {}
     local stale = {}
 
@@ -297,9 +342,10 @@ end
 
 --------------------------------------------------------------------------------
 
-local STRATEGIES = {
-    { name = "targeting", run = strategyTargeting },
-    { name = "registry", run = strategyRegistry },
+local SOURCES = {
+    { name = "targeting", run = sourceTargeting },
+    { name = "corpses", run = sourceTargetingDead },
+    { name = "registry", run = sourceRegistry },
 }
 
 function Scanner.Init(deps)
@@ -385,6 +431,13 @@ local function collect(entities, player, radius)
 end
 
 -- Cached: called both by the indicator every frame and by the sweep.
+--
+-- Every source runs on every scan and the results are merged. An earlier version
+-- locked onto the first source that worked and switched the others off, which
+-- broke on freshly killed enemies: the engine drops dead NPCs from the targeting
+-- system, so corpses from a just-finished fight were invisible until a save and
+-- reload brought them back as already-dead entities. No single source sees
+-- everything, so the union is what counts.
 function Scanner.Get()
     if _cacheStamp >= 0 and (_time - _cacheStamp) < CACHE_SECONDS then
         return _cache.objects, _cache.stacks
@@ -399,38 +452,34 @@ function Scanner.Get()
     end
 
     local radius = Config.values.radius
+    local merged = {}
+    local detail = {}
+    local contributors = {}
 
-    for _, strategy in ipairs(STRATEGIES) do
-                -- Once a strategy has proven itself, stop paying for the others.
-        if not Scanner.strategyLocked or Scanner.strategy == strategy.name then
-            local entities = strategy.run(player, radius)
+    for _, source in ipairs(SOURCES) do
+        local entities = source.run(player, radius)
+        local count = entities and #entities or 0
 
-            if entities ~= nil and #entities > 0 then
-                local objects, stacks, skippedQuest = collect(entities, player, radius)
+        detail[#detail + 1] = source.name .. "=" .. tostring(count)
 
-                if #objects > 0 then
-                    if not Scanner.strategyLocked then
-                        Scanner.strategy = strategy.name
-                        Scanner.strategyLocked = true
-                        Log.Info("scan strategy resolved: " .. strategy.name)
-                    end
-
-                    Log.DebugThrottled("scan.result", 2.0, string.format(
-                        "scan via %s: %d raw, %d lootable, %d stacks, %d quest skipped",
-                        strategy.name, #entities, #objects, stacks, skippedQuest))
-
-                    _cache = { objects = objects, stacks = stacks }
-                    return _cache.objects, _cache.stacks
-                end
-
-                Log.DebugThrottled("scan.empty." .. strategy.name, 10.0, string.format(
-                    "strategy %s returned %d entities but none lootable (%d quest skipped)",
-                    strategy.name, #entities, skippedQuest))
+        if count > 0 then
+            contributors[#contributors + 1] = source.name
+            for _, entity in ipairs(entities) do
+                merged[#merged + 1] = entity
             end
         end
     end
 
-    _cache = { objects = {}, stacks = 0 }
+    -- collect() deduplicates, so overlap between sources is free.
+    local objects, stacks, skippedQuest = collect(merged, player, radius)
+
+    Scanner.strategy = #contributors > 0 and table.concat(contributors, "+") or "nothing found"
+
+    Log.DebugThrottled("scan.result", 2.0, string.format(
+        "scan [%s]: %d raw, %d lootable, %d stacks, %d quest skipped",
+        table.concat(detail, " "), #merged, #objects, stacks, skippedQuest))
+
+    _cache = { objects = objects, stacks = stacks }
     return _cache.objects, _cache.stacks
 end
 

@@ -163,11 +163,29 @@ possible without native widgets. (Used only as the fallback path — see §10.)
 
 ## 9. Finding loot around the player — SETTLED IN-GAME (2026-08-03)
 
-Three candidates were implemented as a fallback chain. The first in-game run settled it:
-**strategy A (targeting system) works** and was locked in immediately
-(`scan strategy resolved: targeting`), with every sweep succeeding through it. Strategy B
-was removed from the code as proven dead, strategy C is kept as a fallback. The original
-analysis follows.
+Three candidates were implemented as a fallback chain. The first in-game run resolved to
+**strategy A (targeting system)**, with every sweep succeeding through it, so B was deleted
+as proven dead and A was locked in for the session.
+
+**That lock turned out to be the wrong design.** Play-testing found that loot stopped being
+detected right after a fight: the player could stand in a pile of fresh corpses and the mod
+saw nothing, while a save and reload made the same bodies work immediately. The engine
+drops dead NPCs from the targeting system — reasonable, since corpses are not aim-assist
+targets — so strategy A goes blind at exactly the moment a body becomes lootable. A reload
+respawns them as already-dead entities, which the query does return.
+
+The fix is to stop choosing between sources and merge them instead. Three now run on every
+scan, deduplicated by entity:
+
+- **A, general targeting query** — containers, ground items, pre-existing bodies;
+- **B, targeting query filtered to dead/defeated/unconscious puppets** — the states A loses.
+  `TSFMV` is a bitfield where the mask bit is `1 << enum value`, so `Obj_Puppet` is 2 and
+  dead/defeated/unconscious is `2048 + 8192 + 32768`;
+- **C, passive registry** fed by loot marker controllers — whatever the game itself flags
+  as loot nearby.
+
+The lesson generalises: no single one of these APIs sees everything, and the one that looks
+sufficient in calm play is not the one that matters in combat. The original analysis follows.
 
 **A. Targeting system.** `gametargetingTargetingSystem:GetTargetParts(instigator, query)`
 with a `TargetSearchQuery` (`maxDistance`, `searchFilter`, `testedSet`). Game-side example
