@@ -34,32 +34,104 @@ other mods. Installing CyberLooter itself is copying one folder.
 
 ## Installation
 
-### Prerequisites, in this order
+Nothing here modifies the game's own files. Every piece is a separate file or folder that
+can be deleted again, and none of it touches saves or archives.
 
-Both archives unpack straight into the game's root folder (the one containing `bin\`,
-next to `Cyberpunk2077.exe`'s parent) and simply merge their files in.
+### Step 0 — find the game folder
 
-1. **[RED4ext](https://github.com/WopsS/RED4ext/releases)** — CET's loader. The archive
-   contains `bin\x64\winmm.dll` and a `red4ext\` folder.
-2. **[Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks/releases)**
-   v1.37.1 or newer — take `cet_x.y.z.zip`. It contains `bin\x64\version.dll`,
-   `bin\x64\plugins\cyber_engine_tweaks.asi` and the `cyber_engine_tweaks\` folder.
+Everything below is unpacked into the **game root**: the folder that contains `bin\`,
+`archive\` and `REDprelauncher.exe`. On Steam it is usually
 
-Start the game once at this point. CET shows a first-run window where you pick the overlay
-key and confirm; if that window never appears, CET is not loading and there is no point
-continuing until it does.
+```
+C:\Program Files (x86)\Steam\steamapps\common\Cyberpunk 2077\
+```
 
-### The mod
+If Steam has the game on another drive, use **Steam → right-click Cyberpunk 2077 →
+Manage → Browse local files** and it opens exactly this folder.
 
-1. Make sure CET works (its overlay opens in game).
-2. Copy the `CyberLooter` folder into
-   `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\`.
-3. Start the game and open the CET overlay (`~` by default).
-4. Go to the **Bindings** tab, find the **CyberLooter** section and assign a key to
-   *"CyberLooter: loot everything around"*. The interaction key (`F`) is the natural
-   choice and is safe to use — CET does not take the key away from the game.
+Getting this wrong is the single most common installation failure. When an archive is
+unpacked correctly, its `bin` folder merges into the game's existing `bin` folder — you
+should never end up with `Cyberpunk 2077\CyberEngineTweaks\bin\...` or a second nested
+`Cyberpunk 2077\Cyberpunk 2077\`.
 
-Until a key is assigned the mod does nothing, and its settings window says so.
+### Step 1 — RED4ext
+
+Cyber Engine Tweaks runs on top of RED4ext, so this comes first.
+
+1. Download the latest `red4ext-x.y.z.zip` from
+   [github.com/WopsS/RED4ext/releases](https://github.com/WopsS/RED4ext/releases)
+   (v1.30.0 at the time of writing).
+2. Unpack it into the game root. It adds `bin\x64\winmm.dll` and a `red4ext\` folder.
+
+### Step 2 — Cyber Engine Tweaks
+
+1. Download `cet_x.y.z.zip` from
+   [github.com/maximegmd/CyberEngineTweaks/releases](https://github.com/maximegmd/CyberEngineTweaks/releases)
+   (v1.37.1 or newer). Take the `cet_` archive, not the `-pdb` one — that is debug data.
+2. Unpack it into the game root. It adds `bin\x64\version.dll`,
+   `bin\x64\plugins\cyber_engine_tweaks.asi`, the `bin\x64\plugins\cyber_engine_tweaks\`
+   folder and `bin\x64\global.ini`.
+
+### Step 3 — check that CET works, before going further
+
+Start the game. On the first launch with CET installed, an overlay window appears asking
+you to choose the key that opens the CET console and to confirm. Pick one (`~` is the
+default suggestion) and accept.
+
+**If that window never appears, stop here** — CET is not loading, and CyberLooter cannot
+work until it does. Usual causes:
+
+- the archives went to the wrong folder (see step 0);
+- an antivirus quarantined `version.dll` or `winmm.dll` — both are legitimate loader
+  libraries, but they look suspicious to some scanners;
+- the Microsoft Visual C++ Redistributable (x64) is missing — install it from Microsoft
+  and try again.
+
+The CET wiki has a fuller troubleshooting guide:
+[wiki.redmodding.org/cyber-engine-tweaks](https://wiki.redmodding.org/cyber-engine-tweaks/).
+
+### Step 4 — CyberLooter
+
+1. Get the mod folder, either by downloading the repository as a ZIP
+   (**Code → Download ZIP**) or with git.
+2. Copy it into `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\` and make sure
+   the folder is named exactly **`CyberLooter`**. GitHub's ZIP unpacks as
+   `CyberLooter-main`, so rename it — CET takes the mod name from the folder name.
+3. The result must look like this:
+
+```
+Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\CyberLooter\
+    init.lua
+    version.txt
+    Modules\
+        Config.lua
+        Hint.lua
+        ...
+```
+
+`init.lua` has to sit directly inside `CyberLooter\`. The `docs\` folder and `README.md`
+can stay; they are ignored by the game.
+
+### Step 5 — bind a key
+
+1. Start the game and open the CET overlay.
+2. Open the **Bindings** tab and find the **CyberLooter** section.
+3. Assign a key to *"CyberLooter: loot everything around"*. The interaction key (`F`) is
+   the natural choice and is safe to use — CET does not take the key away from the game,
+   so normal interactions keep working.
+
+Until a key is assigned the mod does nothing, and its settings window says so in red.
+
+### Updating and removing
+
+To update, replace the contents of the `CyberLooter` folder; `config.json` and
+`cyberlooter.log` live in that same folder, so keep them if you want your settings. If you
+installed with git, `git pull` inside the folder is enough.
+
+To remove the mod, delete the `CyberLooter` folder. To remove everything, also delete
+`bin\x64\version.dll`, `bin\x64\winmm.dll`, `bin\x64\global.ini`,
+`bin\x64\plugins\cyber_engine_tweaks.asi`, `bin\x64\plugins\cyber_engine_tweaks\` and
+`red4ext\`.
 
 ## Settings
 
