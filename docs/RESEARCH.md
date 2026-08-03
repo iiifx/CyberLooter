@@ -1,18 +1,19 @@
-# CyberLooter — технический ресёрч
+# CyberLooter — technical research
 
-Дата: 2026-08-03. Всё ниже проверено по исходникам, если явно не помечено как гипотеза.
+Dated 2026-08-03. Everything below is verified against source unless explicitly marked
+as an assumption.
 
-## Источники
+## Sources
 
-| Источник | Что даёт |
+| Source | What it provides |
 |---|---|
-| [In-Question/MOD_Development_Reference](https://github.com/In-Question/MOD_Development_Reference) | Декомпилированные скрипты игры (1755 файлов `.swift`) + Lua-определения CET API и игровых классов |
-| [maximegmd/CyberEngineTweaks](https://github.com/maximegmd/CyberEngineTweaks) | Исходники CET. Актуальный релиз — v1.37.1 (28.09.2025) |
-| [rodikh/BetterLootMarkers](https://github.com/rodikh/BetterLootMarkers-Cyberpunk-mod) | Рабочий пример CET-мода про лут. Только как образец, код не заимствуем (лицензии нет) |
+| [In-Question/MOD_Development_Reference](https://github.com/In-Question/MOD_Development_Reference) | Decompiled game scripts (1755 `.swift` files) plus Lua definitions for the CET API and game classes |
+| [maximegmd/CyberEngineTweaks](https://github.com/maximegmd/CyberEngineTweaks) | CET source. Current release v1.37.1 (2025-09-28) |
+| [rodikh/BetterLootMarkers](https://github.com/rodikh/BetterLootMarkers-Cyberpunk-mod) | A working CET loot mod, used purely as a reference for which APIs exist. No code is copied — the project carries no license |
 
 ---
 
-## 1. Как игра на самом деле лутает труп — ПРОВЕРЕНО
+## 1. How the game actually loots a corpse — VERIFIED
 
 `DecompiledGameScripts/cyberpunk/puppet/scriptedPuppet.swift:2880`
 
@@ -31,27 +32,25 @@ private final func LootAllItems(choiceEvent: ref<InteractionChoiceEvent>) -> Voi
 }
 ```
 
-**Вывод.** Когда игрок жмёт F на трупе, игра вызывает ровно одну функцию:
-`TransactionSystem.TransferAllItems(источник, игрок)`. Это и есть «штатный механизм подбора»,
-никакого скрытого пайплайна нет.
+**Conclusion.** Pressing F on a corpse runs exactly one function:
+`TransactionSystem.TransferAllItems(source, player)`. There is no hidden pipeline behind it.
 
-Функция доступна из Lua — подтверждено определением
+The function is reachable from Lua, per
 `Definitions/Game_Definitions/classes/gameTransactionSystem.lua:478`:
 
 ```lua
 function gameTransactionSystem:TransferAllItems(source, target) return end
 ```
 
-То есть в CET это `Game.GetTransactionSystem():TransferAllItems(target, player)`.
+In CET that is `Game.GetTransactionSystem():TransferAllItems(target, player)`.
 
-## 2. Состояние «обыскано» выставляется само — ПРОВЕРЕНО
+## 2. The "looted" state cleans itself up — VERIFIED
 
-Это снимает главный риск, которого я опасался на этапе обсуждения. Уборка состояния
-привязана не к интеракции, а к событиям инвентаря — то есть срабатывает при **любом**
-способе изъятия предметов.
+This removes the biggest risk identified during planning. State cleanup hangs off
+inventory events, not off the interaction, so it happens no matter how the items leave.
 
-`core/components/lootContainers.swift:195` (`gameLootBag`) и
-`core/components/inventoryComponent.swift:380` (общий инвентарь-компонент):
+`core/components/lootContainers.swift:195` (`gameLootBag`) and
+`core/components/inventoryComponent.swift:380` (the shared inventory component):
 
 ```swift
 protected cb func OnInventoryEmptyEvent(evt: ref<OnInventoryEmptyEvent>) -> Bool {
@@ -59,7 +58,7 @@ protected cb func OnInventoryEmptyEvent(evt: ref<OnInventoryEmptyEvent>) -> Bool
   this.m_lootQuality = gamedataQuality.Invalid;
   this.m_isEmpty = true;
   GameObject.UntagObject(this);
-  this.RegisterToHUDManagerByTask(false);   // снятие с HUD
+  this.RegisterToHUDManagerByTask(false);   // drops out of the HUD
   ...
 }
 ```
@@ -69,15 +68,15 @@ protected cb func OnInventoryEmptyEvent(evt: ref<OnInventoryEmptyEvent>) -> Bool
 ```swift
 protected cb func OnItemLooted(evt: ref<ItemLootedEvent>) -> Bool {
   let evtToSend: ref<UnregisterAllMappinsEvent> = new UnregisterAllMappinsEvent();
-  this.QueueEvent(evtToSend);   // маркер на карте гаснет
+  this.QueueEvent(evtToSend);   // the map marker goes away
   ...
 }
 ```
 
-**Вывод.** Забрали предметы → игра сама гасит маркер, снимает подсветку, убирает объект
-из HUD и проигрывает эффект опустошения. Руками ничего доделывать не нужно.
+**Conclusion.** Take the items and the game clears the marker, drops the highlight, removes
+the HUD entry and plays the "emptied" effect by itself. Nothing to replicate.
 
-## 3. Квестовый лут можно отфильтровать — ПРОВЕРЕНО
+## 3. Quest loot can be filtered out — VERIFIED
 
 `core/components/lootContainers.swift`:
 
@@ -87,26 +86,25 @@ public const func IsQuest() -> Bool {
 }
 ```
 
-Метод есть у `gameLootBag`, `gameItemDropObject` и контейнеров. Дополнительно на уровне
-отдельного предмета есть `LootItemType.Quest` (`cyberpunk/UI/interactions/looting.swift:567`).
-Фильтр обойдётся в одну проверку.
+Available on `gameLootBag`, `gameItemDropObject` and containers. At the item level there is
+also `LootItemType.Quest` (`cyberpunk/UI/interactions/looting.swift:567`). One check either way.
 
-## 4. «Правила игры: что можно поднять» — ПРОВЕРЕНО, есть готовое условие
+## 4. "What the game lets you pick up" already exists as a condition — VERIFIED
 
-`cyberpunk/interactions/scriptedConditions.swift:275` — класс `LootPickupScriptedCondition`,
-это ровно тот тест, который игра применяет к предметам на земле:
+`cyberpunk/interactions/scriptedConditions.swift:275` defines `LootPickupScriptedCondition`,
+the exact test the game applies to ground items:
 
-- тяжёлое оружие нельзя поднять, если игрок уже что-то несёт;
-- гранаты и лечилки нельзя поднять, если заряды и так на максимуме;
-- в остальных случаях — можно.
+- heavy weapons cannot be picked up while the player is carrying something;
+- grenades and healing items cannot be picked up when their charges are already full;
+- otherwise, allowed.
 
-Гипотеза (не проверено): условие можно инстанцировать из Lua и вызвать `:Test(player, obj)`.
-Если не выйдет — логика простая, повторим её сами.
+Assumption (unverified): the condition can be instantiated from Lua and called via
+`:Test(player, obj)`. If not, the logic is small enough to reproduce.
 
-## 5. Определение «есть ли сейчас ванильное действие на F» — ПРОВЕРЕНО
+## 5. Detecting an active vanilla interaction — VERIFIED
 
-`core/blackboard/blackboardDefinitions.swift:805` — блэкборд `UIInteractionsDef`, поле
-`InteractionChoiceHub`. Пример чтения из игрового кода, `cyberpunk/player/player.swift:905`:
+`core/blackboard/blackboardDefinitions.swift:805` defines the `UIInteractionsDef` blackboard
+with an `InteractionChoiceHub` field. Game-side usage, `cyberpunk/player/player.swift:905`:
 
 ```swift
 let bboard = GameInstance.GetBlackboardSystem(this.GetGame()).Get(GetAllBlackboardDefs().UIInteractions);
@@ -114,10 +112,10 @@ let hub: InteractionChoiceHubData = FromVariant(bboard.GetVariant(GetAllBlackboa
 ArrayClear(hub.choices);
 ```
 
-**Вывод.** Непустой `hub.choices` = под курсором есть активное взаимодействие. Это и есть
-наш признак «сейчас F занята игрой, не вмешиваемся».
+**Conclusion.** A non-empty `hub.choices` means a live interaction prompt under the cursor.
+That is the signal for "the key belongs to the game right now, stay out of it".
 
-## 6. CET не отбирает нажатие у игры — ПРОВЕРЕНО
+## 6. CET does not consume the key press — VERIFIED
 
 `src/VKBindings.cpp:537`:
 
@@ -131,13 +129,14 @@ LRESULT VKBindings::OnWndProc(HWND, UINT auMsg, WPARAM, LPARAM alParam) {
 }
 ```
 
-CET слушает raw input и всегда возвращает 0 — нажатие уходит в игру как обычно.
-Следствия:
-- повесить наш хоткей на F безопасно, ванильное поведение F не сломается;
-- но и подавить ванильное действие мы не можем — отсюда необходимость проверки из п. 5;
-- бинды CET не срабатывают, пока открыт оверлей CET (там же в `ExecuteSingleInput`).
+CET listens to raw input and always returns 0, so the key still reaches the game.
+Consequences:
 
-## 7. Удержание клавиши поддерживается из коробки — ПРОВЕРЕНО
+- binding our action to the interact key is safe, vanilla behaviour is unaffected;
+- but we cannot suppress the vanilla action either — hence the check in §5;
+- CET binds do not fire while the CET overlay is open (`ExecuteSingleInput`).
+
+## 7. Hold detection is supported out of the box — VERIFIED
 
 `Definitions/CET_Definitons/cet.lua`:
 
@@ -148,26 +147,26 @@ function IsBound(id) end
 function GetBind(id) end
 ```
 
-`registerInput` отдаёт и нажатие, и отпускание → таймер удержания меряем сами.
-`RecordKeyDown` в `VKBindings.cpp` отсекает автоповтор, так что событие «нажал» приходит один раз.
-`IsBound`/`GetBind` позволят подсказать в интерфейсе, что клавиша ещё не назначена.
+`registerInput` delivers both press and release, so hold duration is ours to measure.
+`RecordKeyDown` in `VKBindings.cpp` filters auto-repeat, so the press event arrives once.
+`IsBound`/`GetBind` let the UI report an unassigned key.
 
-## 8. Индикатор поверх игры рисовать можно — ПРОВЕРЕНО
+## 8. An overlay indicator can be drawn — VERIFIED
 
-`src/d3d12/D3D12_Functions.cpp:358` — `CET::Get().GetVM().Draw()` вызывается в каждом кадре
-внутри `PrepareUpdate()`, безусловно. `LuaVM::Draw()` фильтрует только по `m_initialized` и
-`m_drawBlocked`. Состояние оверлея на это не влияет.
+`src/d3d12/D3D12_Functions.cpp:358` calls `CET::Get().GetVM().Draw()` every frame inside
+`PrepareUpdate()`, unconditionally. `LuaVM::Draw()` only filters on `m_initialized` and
+`m_drawBlocked`; overlay state is irrelevant.
 
-**Вывод.** `registerForEvent("onDraw", ...)` работает всегда, значит ImGui-индикатор удержания
-можно показывать прямо в игре без всяких нативных виджетов.
+**Conclusion.** `registerForEvent("onDraw", ...)` always runs, so an ImGui indicator is
+possible without native widgets. (Used only as the fallback path — see §10.)
 
-## 9. Поиск лута вокруг игрока — ГЛАВНАЯ ОСТАВШАЯСЯ НЕИЗВЕСТНОСТЬ
+## 9. Finding loot around the player — THE REMAINING UNKNOWN
 
-Три кандидата, ни один не проверен в бою:
+Three candidates, none verified in-game:
 
-**A. Система таргетинга.** `gametargetingTargetingSystem:GetTargetParts(instigator, query)`,
-структура запроса `TargetSearchQuery` (`maxDistance`, `searchFilter`, `testedSet`).
-Рабочий пример из игры — `cyberpunk/devices/core/sensorDevice.swift:1919`:
+**A. Targeting system.** `gametargetingTargetingSystem:GetTargetParts(instigator, query)`
+with a `TargetSearchQuery` (`maxDistance`, `searchFilter`, `testedSet`). Game-side example
+in `cyberpunk/devices/core/sensorDevice.swift:1919`:
 
 ```swift
 searchQuery.searchFilter = TSF_And(TSF_Not(TSFMV.Att_Friendly), ...);
@@ -176,29 +175,29 @@ GameInstance.GetTargetingSystem(...).GetTargetParts(player, searchQuery, targets
 target = TS_TargetPartInfo.GetComponent(targets[i]).GetEntity() as GameObject;
 ```
 
-Плюс: честный радиус в метрах, `TargetingSet.Complete` игнорирует направление взгляда.
-Риск: фильтры `TSFMV` заточены под персонажей и устройства (`Obj_Puppet`, `Obj_Device`,
-`Obj_Other`). Попадают ли туда мешки с лутом и предметы на земле — неизвестно.
+Upside: a true metric radius, and `TargetingSet.Complete` ignores where the player is
+looking. Risk: the `TSFMV` filters are written around puppets and devices
+(`Obj_Puppet`, `Obj_Device`, `Obj_Other`) — whether loot bags and ground items are covered
+is unknown.
 
-**B. Система маркеров.** `gamemappinsMappinSystem:GetMappins(targetType)`.
-Плюс: даёт ровно то, что игра сама считает лутом поблизости.
-Риск: сигнатура и формат ответа не документированы.
+**B. Mappin system.** `gamemappinsMappinSystem:GetMappins(targetType)`.
+Upside: returns precisely what the game itself treats as nearby loot.
+Risk: signature and return shape are undocumented.
 
-**C. Перехват контроллеров маркеров.** Подход BetterLootMarkers: `ObserveAfter` на
-`GameplayMappinController.UpdateVisibility`, затем `mappin:GetEntityID()` →
-`Game.FindEntityByID()`. Плюс: работает в живом моде прямо сейчас. Минус: пассивный сбор
-(мы не запрашиваем список, а ждём, когда игра позовёт нас), нужен свой реестр с чисткой.
+**C. Mappin controller hook.** The BetterLootMarkers approach: `ObserveAfter` on
+`GameplayMappinController.UpdateVisibility`, then `mappin:GetEntityID()` →
+`Game.FindEntityByID()`. Upside: proven in a shipping mod. Downside: passive — the game
+calls us rather than us querying it — so it needs its own registry and pruning.
 
-**Решение.** Реализуем все три как цепочку стратегий с откатом, порядок A → B → C,
-результат каждой пишем в диагностический лог. Первый же запуск на твоей машине покажет,
-какая работает, — и лишние выкинем.
+**Decision.** Implement all three as a fallback chain in order A → B → C and log the outcome
+of each. The first real run on the player's machine settles it, and the losers get deleted.
 
-## 10. Подсказки кнопок можно рисовать движком — ПРОВЕРЕНО
+## 10. Button prompts can be rendered by the engine — VERIFIED
 
-Это отменяет необходимость рисовать индикатор самим. В игре есть штатная система хинтов,
-та самая, что показывает «Подобрать», «Удерживать — оттащить тело» и т.п.
+This removes the need to draw the indicator at all. The game has a first-class hint system —
+the one behind "Take", "Hold to drag body" and the rest.
 
-Игровой код, `cyberpunk/player/psm/defaultTransition.swift:1709`:
+Game code, `cyberpunk/player/psm/defaultTransition.swift:1709`:
 
 ```swift
 protected final const func ShowInputHint(scriptInterface, actionName: CName, source: CName,
@@ -217,7 +216,7 @@ protected final const func ShowInputHint(scriptInterface, actionName: CName, sou
 }
 ```
 
-Структура (`orphans.swift:27943`) и enum (`orphans.swift:6983`):
+The struct (`orphans.swift:27943`) and enum (`orphans.swift:6983`):
 
 ```swift
 public native struct InputHintData {
@@ -230,7 +229,7 @@ public native struct InputHintData {
 }
 ```
 
-В CET для этого есть **готовый глобальный хелпер** — `Definitions/Game_Definitions/globals.lua:3679`:
+CET exposes a **ready-made global helper** — `Definitions/Game_Definitions/globals.lua:3679`:
 
 ```lua
 ---@param show Bool
@@ -239,39 +238,59 @@ public native struct InputHintData {
 function Game.SendInputHintData(show, data, targetHintContainer) return end
 ```
 
-Структура конструируется из Lua: `gameuiInputHintData.new()`
+The struct is constructible from Lua via `gameuiInputHintData.new()`
 (`Definitions/Game_Definitions/classes/gameuiInputHintData.lua`).
 
-**Вывод.** Индикатор — это не наша отрисовка, а вызов движка:
+**Conclusion.** The indicator is an engine call rather than custom drawing:
 
 ```lua
 local hint = gameuiInputHintData.new()
-hint.action = CName.new("Choice1")     -- движок сам подставит клавишу игрока
+hint.action = CName.new("Choice1")     -- engine substitutes the player's own key
 hint.source = CName.new("CyberLooter")
-hint.localizedLabel = "Собрать всё · 7"
+hint.localizedLabel = "Loot All · 7"
 hint.holdIndicationType = inkInputHintHoldIndicationType.Hold
 hint.enableHoldAnimation = true
 Game.SendInputHintData(true, hint, "GameplayInputHelper")
 ```
 
-Плюсы: родной стиль, родное место на экране, родная анимация удержания, автоматическая
-иконка клавиши для клавиатуры и геймпада.
+This gets native styling, native placement, the native hold animation and the correct key
+glyph for both keyboard and gamepad.
 
-Открытые вопросы (гипотезы, проверяются логом на первой выкатке):
-- обновляется ли существующий хинт при повторной отправке с тем же `action`+`source`,
-  или дублируется (план Б — снимать через `show=false` и слать заново);
-- совпадёт ли тайминг родной анимации удержания с нашим порогом (задаётся конфигом
-  действия в движке, не нами).
+Open questions (assumptions, to be settled by the log on the first deployment):
+- whether re-sending with the same `action` + `source` updates the existing hint or stacks
+  a duplicate (plan B: take it down with `show=false` and re-send);
+- whether the native hold animation timing matches our threshold — it comes from the
+  action's input config, not from us.
+
+## 11. Registration must happen at load time — VERIFIED
+
+`src/scripting/ScriptContext.cpp:195`:
+
+```cpp
+const auto result = sb.ExecuteFile(UTF16ToUTF8(path.native()));
+...
+env["registerForEvent"] = sol::nil;
+env["registerHotkey"] = sol::nil;
+env["registerInput"] = sol::nil;
+```
+
+CET nils out the registration functions the moment `init.lua` finishes executing. Calling
+`registerInput` from inside `onInit` therefore fails outright — the binding would never
+appear in the Bindings tab. All registration has to happen while `init.lua` runs.
+
+Related: `src/scripting/LuaSandbox.cpp` wraps `io.open` and resolves relative paths through
+`GetLuaPath` against the mod's own directory, so `config.json` and the log file resolve
+correctly regardless of when they are opened.
 
 ---
 
-## Сводка рисков
+## Risk summary
 
-| Риск | Оценка | Что делаем |
+| Risk | Assessment | Mitigation |
 |---|---|---|
-| Не найдём лут вокруг | Средний | Три стратегии с откатом + лог |
-| `TransferAllItems` не сработает на контейнерах/дропе | Низкий | Для трупов подтверждено кодом игры; на остальном — лог и откат на поштучный `TransferItem` |
-| Конфликт с ванильной F | Низкий | Проверка `InteractionChoiceHub` перед срабатыванием |
-| Просадка FPS при большом радиусе | Низкий | Троттлинг сканирования, лимит объектов за проход |
-| Сломанный квест | Низкий | Фильтр `IsQuest()`, включён по умолчанию |
-| Перегруз инвентаря хламом | Гарантированный | Осознанный выбор пользователя; фильтры оставляем на будущее |
+| Loot around the player is not found | Medium | Three strategies with fallback, plus logging |
+| `TransferAllItems` fails on containers or ground items | Low | Confirmed by game code for corpses; elsewhere, verified by emptiness check with per-item fallback |
+| Conflict with the vanilla interact key | Low | `InteractionChoiceHub` check before acting |
+| Frame drops at large radius | Low | Throttled scanning, per-sweep object cap |
+| Broken quest | Low | `IsQuest()` filter, on by default |
+| Inventory filling with junk | Certain | A deliberate user choice; filters left for later |

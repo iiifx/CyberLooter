@@ -17,7 +17,7 @@ local DEFAULTS = {
     -- Native input hint
     showIndicator = true,
     hintUseGameAction = true,
-    hintLabel = "Собрать всё",
+    hintLabel = "Loot All",
     hintRefreshHack = false,
 
     -- ImGui fallback indicator
