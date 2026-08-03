@@ -20,6 +20,8 @@ by holding a single key.
    exception is quest loot (switchable in settings).
 6. Loot through the **game's own mechanism**, not a raw item transfer.
 7. **Minimal dependencies.** Cyber Engine Tweaks and nothing else.
+8. **English only** across code, comments and documentation.
+9. **MIT licensed.**
 
 ## Dependencies
 
@@ -92,7 +94,7 @@ CyberLooter/
 | `respectInteraction` | on | — |
 | `maxObjectsPerSweep` | 24 | 4–100 |
 | `showIndicator` | on | — |
-| `hintUseGameAction` | on | — |
+| `hintShowKeyName` | off | — |
 | `hintLabel` | `Loot All` | free text |
 | `hintRefreshHack` | off | — |
 | `useImGuiFallback` | off | — |
@@ -135,7 +137,7 @@ Three strategies, tried in order; the first one that returns lootable objects is
 for the session and named in the log and the settings window:
 
 1. `TargetingSystem:GetTargetParts` with a `TargetSearchQuery` (`maxDistance` = radius,
-   `testedSet = TargetingSet.Complete`);
+   `testedSet = gameTargetingSet.Complete`);
 2. `MappinSystem:GetMappins(...)`;
 3. a passive registry fed by `GameplayMappinController` observers.
 
@@ -188,8 +190,10 @@ Game.SendInputHintData(true, hint, "GameplayInputHelper")
 - **Withdrawing** is the same call with `show = false`.
 - **Updating** re-sends with new text. Should the engine stack duplicates instead of
   updating (assumption, RESEARCH §10), `hintRefreshHack` takes it down first.
-- **Key glyph.** `action = "Choice1"` is correct while our binding sits on the interact
-  key. `hintUseGameAction` turns that off and spells the assigned key out in the text.
+- **Key glyph.** It always comes from `action = "Choice1"`, because the hint system
+  renders the glyph from the action and will not draw a prompt without one. That is correct
+  while the binding sits on the interact key; for any other key, `hintShowKeyName` adds the
+  real key name to the text so the prompt does not mislead.
 - **Liveness.** The engine can drop its hint container without telling us (save load,
   fast travel, UI rebuild), so the hint is re-sent every few seconds even when the text has
   not changed. Cheap, and it heals a prompt that silently disappeared.
@@ -208,9 +212,12 @@ progress. Position is a configurable offset from screen centre, obtained via CET
 ### Log.lua
 
 Writes `cyberlooter.log` next to the mod: which scan strategy resolved, how many objects
-were found and processed, which transfer path was used, what failed and why. Off by
-default. Repeated messages are throttled so per-frame paths cannot flood the file.
-This file is the primary feedback channel in place of in-game debugging.
+were found and processed, which transfer path was used, what failed and why.
+
+Info, warnings and errors are always written - there are only a handful of them per
+session and they are what makes a bug report usable. The `debugLog` switch adds verbose
+per-scan and per-sweep detail. Repeated messages are throttled so per-frame paths cannot
+flood the file. This file is the primary feedback channel in place of in-game debugging.
 
 ## Testing constraints
 

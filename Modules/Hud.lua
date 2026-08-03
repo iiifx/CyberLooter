@@ -18,22 +18,14 @@ function Hud.Init(deps)
     Hint = deps.Hint
 end
 
--- CET exposes GetDisplayResolution(); ImGui.GetDisplaySize() is not part of its
--- bindings, so it is only tried as a second guess.
+-- CET exposes GetDisplayResolution(); there is no ImGui.GetDisplaySize() in its
+-- bindings, so a plain default is the only other option.
 local function displaySize()
     if GetDisplayResolution ~= nil then
         local ok, width, height = pcall(GetDisplayResolution)
         if ok and width ~= nil and height ~= nil then
             return width, height
         end
-    end
-
-    local ok, width, height = pcall(function()
-        return ImGui.GetDisplaySize()
-    end)
-
-    if ok and width ~= nil and height ~= nil then
-        return width, height
     end
 
     return 1920, 1080

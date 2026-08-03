@@ -69,19 +69,22 @@ function Hint.IsAvailable()
     return _available
 end
 
--- `bind` is the key the player actually assigned in CET; it is only spelled out
--- in the text when the hint is not allowed to borrow the game's own key icon.
+-- `bind` is the key the player actually assigned in CET.
 function Hint.Update(count, bind)
     if not Config.values.showIndicator or not _available or count <= 0 then
         Hint.Clear()
         return
     end
 
+    -- The key glyph itself always comes from the game's interact action: the hint
+    -- system renders it from `action`, and there is no way to ask for a prompt
+    -- without one. When the mod is bound to some other key, hintShowKeyName adds
+    -- the real key name to the text so the prompt is not misleading.
     local label
-    if Config.values.hintUseGameAction then
-        label = string.format("%s · %d", Config.values.hintLabel, count)
-    else
+    if Config.values.hintShowKeyName then
         label = string.format("%s [%s] · %d", Config.values.hintLabel, tostring(bind or "?"), count)
+    else
+        label = string.format("%s · %d", Config.values.hintLabel, count)
     end
 
     if _visible and _shownLabel == label and (_time - _shownAt) < RESEND_INTERVAL then

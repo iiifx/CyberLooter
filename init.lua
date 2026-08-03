@@ -120,13 +120,15 @@ local function main()
         end
 
         if Config.isOverlayOpen then
-            local objects = Scanner.Get()
+            -- Scanned live rather than reusing the indicator's number, which is
+            -- zero whenever the indicator is suppressed.
+            local objects, stacks = Scanner.Get()
             Config.DrawWindow({
                 bound = Input.IsBound(),
                 bind = Input.GetBind() or "-",
                 strategy = Scanner.strategy,
                 objects = #objects,
-                stacks = _lastStacks,
+                stacks = stacks,
                 lastSweep = Looter.lastSweep,
                 registrySize = Scanner.GetRegistrySize(),
                 hintForcedFallback = Hint.forcedFallback,
@@ -144,6 +146,7 @@ local function main()
     registerForEvent("onShutdown", function()
         -- Leaving a hint on screen after unload would be a visible artefact.
         Hint.Clear()
+        Config.SaveIfDirty()
     end)
 end
 

@@ -3,6 +3,7 @@
 local State = {}
 
 local Log
+local _recoveryLogged = false
 
 -- Set when the vanilla-interaction guard cannot read its blackboard, so the
 -- settings window can admit that the guard is not actually running.
@@ -69,19 +70,36 @@ function State.HasVanillaInteraction()
             return false
         end
 
-        local hub = raw
-        if hub.choices == nil and FromVariant ~= nil then
+        -- Unpack first. Touching a field on a raw Variant may throw rather than
+        -- return nil, so it must never be the first thing tried.
+        local hub = nil
+        if FromVariant ~= nil then
             local unpacked, value = pcall(FromVariant, raw)
             if unpacked and value ~= nil then
                 hub = value
             end
         end
 
-        if hub == nil or hub.choices == nil then
+        -- Older CET builds hand back an already-unpacked struct.
+        if hub == nil then
+            hub = raw
+        end
+
+        local readable, choices = pcall(function()
+            return hub.choices
+        end)
+
+        if not readable then
             return nil
         end
 
-        return #hub.choices > 0
+        -- An empty or choice-less hub simply means no prompt is up, which is a
+        -- perfectly normal state and must not be mistaken for a broken read.
+        if choices == nil then
+            return false
+        end
+
+        return #choices > 0
     end)
 
     -- nil means the read itself did not work, which is different from "no prompt".
@@ -91,14 +109,18 @@ function State.HasVanillaInteraction()
         if not State.interactionCheckBroken then
             State.interactionCheckBroken = true
             Log.Warn("cannot read InteractionChoiceHub - the 'ignore key during vanilla prompts' "
-                .. "guard is inactive this session: " .. tostring(result))
+                .. "guard is inactive: " .. tostring(result))
         end
         return false
     end
 
     if State.interactionCheckBroken then
         State.interactionCheckBroken = false
-        Log.Info("InteractionChoiceHub became readable, vanilla prompt guard is active again")
+        -- Logged at most once per session so a flapping read cannot spam the file.
+        if not _recoveryLogged then
+            _recoveryLogged = true
+            Log.Info("InteractionChoiceHub became readable, vanilla prompt guard is active again")
+        end
     end
 
     return result and true or false

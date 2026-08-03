@@ -26,7 +26,8 @@ Installing the mod means copying one folder.
   game's styling and hold animation. No prompt appears when there is nothing to pick up.
 - Stays out of the way: when the game itself shows an interaction prompt (a door, a
   terminal, a corpse you are looking at), the key behaves exactly as it normally does and
-  the mod does nothing.
+  the mod does nothing. A hold that starts during such a prompt is not thrown away though —
+  it stays armed and sweeps the moment the prompt goes away, so no re-press is needed.
 - If a single hold hits the per-sweep object limit, the rest stays where it is — just
   hold the key again.
 
@@ -55,11 +56,11 @@ The settings window appears together with the CET overlay. Settings are written 
 | Skip quest loot | on | Leave quest items and quest containers alone |
 | Ignore key while a vanilla prompt is up | on | Never interfere with normal interactions |
 | Show indicator | on | Show the button prompt when loot is nearby |
-| Use game key icon | on | Borrow the key glyph from the game's interact action |
+| Spell out the bound key in the prompt | off | Adds the assigned key name to the prompt text. Useful when the mod is bound to something other than the interact key, because the key glyph itself always comes from the game's interact action |
 | Re-send hint instead of updating | off | Workaround if prompts ever stack up instead of updating |
 | ImGui fallback indicator | off | Backup indicator if the engine prompt does not work |
 | Offset X / Offset Y | 0 / 60 px | Position of the fallback indicator, shown only when the fallback is enabled |
-| Write cyberlooter.log | off | Verbose diagnostic log |
+| Write cyberlooter.log | off | Adds verbose per-scan and per-sweep detail to the log |
 
 `config.json` is created the first time settings are changed and the overlay is closed.
 
@@ -99,7 +100,11 @@ Full technical background, with references to the game's decompiled scripts, is 
 
 ## Troubleshooting
 
-Turn on **Write cyberlooter.log**, play for a couple of minutes, then look at
+The mod always keeps a short log in `cyberlooter.log` next to it: startup, the scan
+strategy it settled on, sweep results and any failure. Turning on **Write
+cyberlooter.log** adds verbose per-scan detail on top of that.
+
+If something misbehaves, turn the switch on, play for a couple of minutes, then look at
 `cyberlooter.log` in the mod folder. It records which scan strategy resolved, how many
 objects and item stacks were found, what was transferred, which call path was used and
 where anything failed.

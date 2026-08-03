@@ -63,13 +63,12 @@ local function isLootCandidate(obj)
         return false
     end
 
-    -- gameContainerObjectSingleItem derives from gameContainerObjectBase, so the
-    -- base check already covers it; it is listed for clarity, not necessity.
+    -- gameLootContainerBase covers gameContainerObjectBase and, through it,
+    -- gameContainerObjectSingleItem. gameLootBag derives straight from gameObject,
+    -- so it needs its own check.
     if isA(obj, CLASS_ITEM_DROP)
         or isA(obj, "gameLootBag")
-        or isA(obj, "gameLootContainerBase")
-        or isA(obj, "gameContainerObjectBase")
-        or isA(obj, "gameContainerObjectSingleItem") then
+        or isA(obj, "gameLootContainerBase") then
         return true
     end
 
@@ -304,8 +303,10 @@ local function strategyRegistry(player, radius)
         if (_time - entry.stamp) > REGISTRY_TTL then
             stale[#stale + 1] = key
         else
-            local entity = Game.FindEntityByID(entry.id)
-            if entity ~= nil then
+            -- Stored ids can outlive their entities (save reload, streaming), so
+            -- the lookup is protected like the other two strategies are.
+            local ok, entity = pcall(Game.FindEntityByID, entry.id)
+            if ok and entity ~= nil then
                 found[#found + 1] = entity
             else
                 stale[#stale + 1] = key

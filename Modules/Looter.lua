@@ -97,15 +97,15 @@ local function lootOne(entry, player)
         return false, "handle lost", 0
     end
 
-    if before == -1 then
-        if after == 0 then
-            return true, "transferAll", nil
-        end
-        if ok then
-            return true, "transferAll(unverified)", nil
-        end
+    -- Starting count unknown, but the object is now demonstrably empty.
+    if before == -1 and after == 0 then
+        return true, "transferAll", nil
     end
 
+    -- Everything else means items are still sitting there, so the fallback gets
+    -- its turn. "before unknown, after non-zero" deliberately lands here: an
+    -- unreadable starting count is no excuse to claim success while loot is
+    -- visibly left behind.
     local moved = transferItemByItem(holder, player)
     if moved > 0 then
         Log.DebugThrottled("loot.fallback", 10.0,
@@ -137,28 +137,38 @@ function Looter.Sweep()
     end
 
     local limit = Config.values.maxObjectsPerSweep
+    local processed = 0
     local attempted = 0
     local succeeded = 0
+    local skipped = 0
     local stacks = 0
     local methods = {}
 
     for _, entry in ipairs(objects) do
-        if attempted >= limit then
+        if processed >= limit then
             Log.Info(string.format(
-                "sweep hit the %d object limit, %d left for the next hold", limit, #objects - attempted))
+                "sweep hit the %d object limit, %d left for the next hold", limit, #objects - processed))
             break
         end
 
-        attempted = attempted + 1
+        processed = processed + 1
 
         local ok, method, movedStacks = lootOne(entry, player)
         methods[method] = (methods[method] or 0) + 1
 
-        if ok then
-            succeeded = succeeded + 1
-            -- The fallback path knows exactly how much it moved; the primary path
-            -- does not, so the scanned stack count stands in for it.
-            stacks = stacks + (movedStacks or entry.stacks)
+        if method == "already empty" then
+            -- Emptied by something else while the scan cache was still warm.
+            -- Counting it as a failed attempt would misreport a healthy sweep.
+            skipped = skipped + 1
+        else
+            attempted = attempted + 1
+            if ok then
+                succeeded = succeeded + 1
+                -- The fallback path knows exactly how much it moved; the primary
+                -- path does not, so the scanned stack count stands in for it and
+                -- is therefore an estimate.
+                stacks = stacks + (movedStacks or entry.stacks)
+            end
         end
     end
 
@@ -167,8 +177,12 @@ function Looter.Sweep()
         detail[#detail + 1] = method .. "=" .. tostring(count)
     end
 
-    Looter.lastSweep = string.format("%d/%d objects, %d stacks", succeeded, attempted, stacks)
-    Log.Info(string.format("sweep: %d/%d objects, %d stacks [%s]",
+    if skipped > 0 then
+        detail[#detail + 1] = "skipped=" .. tostring(skipped)
+    end
+
+    Looter.lastSweep = string.format("%d/%d objects, ~%d stacks", succeeded, attempted, stacks)
+    Log.Info(string.format("sweep: %d/%d objects, ~%d stacks [%s]",
         succeeded, attempted, stacks, table.concat(detail, " ")))
 
     Scanner.Invalidate()

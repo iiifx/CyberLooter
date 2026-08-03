@@ -16,7 +16,7 @@ local DEFAULTS = {
 
     -- Native input hint
     showIndicator = true,
-    hintUseGameAction = true,
+    hintShowKeyName = false,
     hintLabel = "Loot All",
     hintRefreshHack = false,
 
@@ -58,6 +58,15 @@ function Config.Init(deps)
             _dirty = false
         end
     end)
+end
+
+-- Called on shutdown as well: closing the game with the overlay still open
+-- would otherwise discard whatever was just changed.
+function Config.SaveIfDirty()
+    if _dirty then
+        Config.Save()
+        _dirty = false
+    end
 end
 
 function Config.Load()
@@ -151,7 +160,7 @@ function Config.DrawWindow(status)
     ImGui.Text("Indicator")
 
     checkbox("Show indicator", "showIndicator")
-    checkbox("Use game key icon (Choice1)", "hintUseGameAction")
+    checkbox("Spell out the bound key in the prompt", "hintShowKeyName")
     checkbox("Re-send hint instead of updating", "hintRefreshHack")
     checkbox("ImGui fallback indicator", "useImGuiFallback")
 
