@@ -15,6 +15,7 @@ local _isDown = false
 local _heldFor = 0.0
 local _fired = false
 local _onSweep = nil
+local _wasBound = false
 
 Input.bindId = BIND_ID
 
@@ -28,12 +29,34 @@ function Input.Init(deps)
         _isDown = isDown and true or false
         _heldFor = 0.0
         _fired = false
+
+        -- Proof in the log that key events are still arriving. Without it, a mod
+        -- that has gone quiet is indistinguishable from a player who stopped
+        -- pressing the key.
+        Log.DebugThrottled("input.event", 5.0, "key " .. (_isDown and "down" or "up"))
     end)
 end
 
+-- The binding is only used to decide whether the prompt may be shown; the sweep
+-- itself runs off the callback registered above, which CET keeps delivering
+-- regardless of what this reports. So a negative answer after the key has once
+-- been bound is treated as a glitch rather than as a reason to go silent - the
+-- alternative is a mod that quietly stops working until the game is reloaded.
 function Input.IsBound()
     local ok, bound = pcall(IsBound, BIND_ID)
-    return ok and bound == true
+
+    if ok and bound == true then
+        _wasBound = true
+        return true
+    end
+
+    if _wasBound then
+        Log.DebugThrottled("input.bindlost", 30.0,
+            "IsBound() reported no binding for an already bound key, keeping it")
+        return true
+    end
+
+    return false
 end
 
 function Input.GetBind()

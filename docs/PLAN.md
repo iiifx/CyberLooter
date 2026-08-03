@@ -120,6 +120,17 @@ outright, the mod keeps working (failing closed would disable it entirely) but s
 loudly once in the log and permanently in the settings window, because a silently inactive
 guard is worse than a missing one.
 
+A hub is only believed while it looks alive: an explicit `active == false` counts as no
+prompt, and an unchanged hub signature (`id/title/hubPriority/choice count`) that has been
+reported for more than 20 s is treated as leftover blackboard data, with a warning. The gate
+is the one thing that can silence the whole mod, so it is not allowed to do so forever on
+the strength of a value nothing is guaranteed to clear.
+
+Every gate refusal is timed. When scanning has been suppressed for 10 s or more, the reason
+is written to the log at INFO level, and so is the moment it resumes — otherwise a mod that
+has stopped looking is indistinguishable from a world with nothing to loot in it, which is
+exactly how the 0.2.4 outage presented.
+
 ### Input.lua
 
 `registerInput("cyberlooter_sweep", ...)` with an `isDown` callback. Press records the

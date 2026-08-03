@@ -5,6 +5,24 @@ local State = {}
 local Log
 local _recoveryLogged = false
 
+-- The interaction blackboard is not always cleared when a prompt goes away: a hub
+-- can be left behind with its choices still in it, and since that gate is what
+-- keeps the mod off the interact key, a leaked hub disables the mod for the rest
+-- of the session. So an unchanged hub that has been "up" for this long is treated
+-- as stale rather than believed indefinitely. A prompt the player is genuinely
+-- standing in front of only loses the guard after the same delay, and the worst
+-- that costs is one extra sweep alongside a normal interaction.
+local HUB_STALE_AFTER = 20.0
+
+local _time = 0.0
+local _hubSignature = nil
+local _hubSince = 0.0
+local _staleLogged = false
+
+function State.Tick(dt)
+    _time = _time + dt
+end
+
 -- Set when the vanilla-interaction guard cannot read its blackboard, so the
 -- settings window can admit that the guard is not actually running.
 State.interactionCheckBroken = false
@@ -57,7 +75,29 @@ end
 -- The blackboard hands back a Variant (opaque userdata), so it has to be unpacked
 -- with FromVariant before the struct fields exist. Older CET builds unpack it on
 -- the way out, hence both shapes are accepted.
+-- Enough of the hub to tell "still the same prompt" from "a new one", without
+-- assuming any particular field exists on the running build.
+local function hubSignature(hub)
+    local parts = {}
+
+    for _, field in ipairs({ "id", "title", "hubPriority" }) do
+        local ok, value = pcall(function()
+            return hub[field]
+        end)
+        parts[#parts + 1] = (ok and value ~= nil) and tostring(value) or "?"
+    end
+
+    local countOk, count = pcall(function()
+        return #hub.choices
+    end)
+    parts[#parts + 1] = countOk and tostring(count) or "?"
+
+    return table.concat(parts, "/")
+end
+
 function State.HasVanillaInteraction()
+    local liveHub = nil
+
     local ok, result = pcall(function()
         local defs = GetAllBlackboardDefs().UIInteractions
         local bb = Game.GetBlackboardSystem():Get(defs)
@@ -99,7 +139,21 @@ function State.HasVanillaInteraction()
             return false
         end
 
-        return #choices > 0
+        if #choices == 0 then
+            return false
+        end
+
+        -- The hub carries its own liveness flag on builds that have it; a hub
+        -- explicitly marked inactive is leftover data, not a prompt on screen.
+        local activeOk, active = pcall(function()
+            return hub.active
+        end)
+        if activeOk and active == false then
+            return false
+        end
+
+        liveHub = hub
+        return true
     end)
 
     -- nil means the read itself did not work, which is different from "no prompt".
@@ -123,7 +177,34 @@ function State.HasVanillaInteraction()
         end
     end
 
-    return result and true or false
+    if result ~= true then
+        _hubSignature = nil
+        _staleLogged = false
+        return false
+    end
+
+    -- A prompt is reported. Is it the same one as a moment ago, and for how long?
+    local signature = liveHub ~= nil and hubSignature(liveHub) or "unreadable"
+
+    if signature ~= _hubSignature then
+        _hubSignature = signature
+        _hubSince = _time
+        _staleLogged = false
+        return true
+    end
+
+    if (_time - _hubSince) >= HUB_STALE_AFTER then
+        if not _staleLogged then
+            _staleLogged = true
+            Log.Warn(string.format(
+                "the same interaction prompt has been reported for %.0fs (%s); treating it as "
+                .. "leftover blackboard data so the mod does not stay disabled",
+                _time - _hubSince, signature))
+        end
+        return false
+    end
+
+    return true
 end
 
 -- Single gate used by both the sweep and the indicator, so the hint never

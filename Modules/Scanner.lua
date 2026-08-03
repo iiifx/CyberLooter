@@ -139,9 +139,12 @@ function Scanner.IsRestrictedItem(itemData)
 
     -- A readable record is not by itself an answer: what counts is whether one of
     -- the actual signals below could be evaluated.
+    -- GetItemRecord takes the ItemID itself, not the TweakDBID inside it. Passing
+    -- the TweakDBID threw "parameter 1 must be gameItemID" on every single item,
+    -- which is what disabled the whole filter in 0.2.3.
     local record = nil
     probe("record", function()
-        record = RPGManager.GetItemRecord(ItemID.GetTDBID(itemData:GetID()))
+        record = RPGManager.GetItemRecord(itemData:GetID())
         return record ~= nil
     end)
 

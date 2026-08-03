@@ -16,11 +16,21 @@ local Hud = require("Modules/Hud.lua")
 local Input = require("Modules/Input.lua")
 
 local CyberLooter = {
-    version = "0.2.4",
+    version = "0.2.5",
     ready = false,
 }
 
 local _lastStacks = 0
+local _time = 0.0
+
+-- A mod that has silently stopped scanning looks exactly like a world with no
+-- loot in it, which is what made the last outage so hard to place. Whenever the
+-- indicator is suppressed for long enough to be noticed, the reason goes into the
+-- log at INFO level - visible without turning the debug switch on - and so does
+-- the moment it starts working again.
+local SUPPRESSION_REPORT_AFTER = 10.0
+local _suppressedSince = nil
+local _suppressionReported = false
 
 local function loadVersion()
     local file = io.open("version.txt", "r")
@@ -42,25 +52,56 @@ local function onSweep()
     Looter.Sweep()
 end
 
+local function suppress(reason)
+    Hint.Clear()
+
+    if _suppressedSince == nil then
+        _suppressedSince = _time
+        _suppressionReported = false
+    elseif not _suppressionReported and (_time - _suppressedSince) >= SUPPRESSION_REPORT_AFTER then
+        _suppressionReported = true
+        Log.Info(string.format("scanning has been suppressed for %.0fs, reason: %s",
+            _time - _suppressedSince, tostring(reason)))
+    end
+
+    return 0
+end
+
+local function resume()
+    if _suppressedSince == nil then
+        return
+    end
+
+    if _suppressionReported then
+        Log.Info(string.format("scanning resumed after %.0fs", _time - _suppressedSince))
+    end
+
+    _suppressedSince = nil
+    _suppressionReported = false
+end
+
 -- Keeps the indicator honest: it is only shown when a sweep would actually run.
 local function updateIndicator()
+    -- Deliberately not counted as suppression: the sweep runs regardless of
+    -- whether the prompt is drawn, so there is nothing to report.
     if not Config.values.showIndicator then
         Hint.Clear()
+        resume()
         return 0
     end
 
     -- Without a binding the prompt would advertise an action the player has no
     -- way to trigger.
     if not Input.IsBound() then
-        Hint.Clear()
-        return 0
+        return suppress("no key bound")
     end
 
-    local actionable = State.IsActionable(Config.values.respectInteraction)
+    local actionable, reason = State.IsActionable(Config.values.respectInteraction)
     if not actionable then
-        Hint.Clear()
-        return 0
+        return suppress(reason)
     end
+
+    resume()
 
     local _, stacks = Scanner.Get()
     Hint.Update(stacks, Input.GetBind())
@@ -107,6 +148,9 @@ local function main()
             return
         end
 
+        _time = _time + dt
+
+        State.Tick(dt)
         Scanner.Tick(dt)
         Hint.Tick(dt)
         Input.Tick(dt)
