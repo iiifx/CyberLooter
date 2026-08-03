@@ -202,6 +202,24 @@ where anything failed.
 The settings window also shows live diagnostics: the assigned key, the active scan
 strategy, the current object and stack count in radius, and the result of the last sweep.
 
+## Extras: autorun
+
+`extras/autorun.ahk` is a small [AutoHotkey v2](https://www.autohotkey.com/) script that
+implements double-tap-forward autorun: tap `W` twice and the character keeps running until
+you tap `W` again or press `A`, `S`, `D` or `Escape`. Mouse look and jumping work normally
+while it runs.
+
+It is **not part of the mod** and installs nothing into the game — run the file, and quit
+it from the tray icon when you are done. Settings are at the top of the file: the forward
+key, the double-tap window and the cancel keys.
+
+Why it is a separate script rather than a feature of the mod: the game's movement axes are
+read-only from the scripting side. Locomotion reads them via
+`scriptInterface.GetActionValue(n"MoveY")`, and there is no counterpart that writes them,
+so no CET mod can move the character by itself. Mods that manage it ship a native C++ DLL
+and pull in RED4ext, Redscript, InputLoader and Mod Settings as dependencies. Holding the
+key from outside the game achieves the same result with nothing added to the game at all.
+
 ## Compatibility
 
 - Written for Cyberpunk 2077 2.3 with Cyber Engine Tweaks v1.37.1, and confirmed working
