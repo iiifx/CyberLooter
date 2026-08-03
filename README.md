@@ -8,9 +8,10 @@ It was built for players who find repeated precise aiming and clicking painful o
 impractical. It is a quality-of-life mod, not a cheat: it only takes what the game would
 let you take anyway, using the game's own looting function.
 
-**One dependency: [Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks).**
-No redscript, no RED4ext, no ArchiveXL, no TweakXL, no Codeware, no settings frameworks.
-Installing the mod means copying one folder.
+**The mod itself needs only [Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks).**
+CET in turn runs on RED4ext, so those two are what has to be present in the game — nothing
+else. No redscript, no ArchiveXL, no TweakXL, no Codeware, no settings frameworks, and no
+other mods. Installing CyberLooter itself is copying one folder.
 
 ## What it does
 
@@ -33,7 +34,24 @@ Installing the mod means copying one folder.
 
 ## Installation
 
-1. Install Cyber Engine Tweaks (v1.37.1 or newer).
+### Prerequisites, in this order
+
+Both archives unpack straight into the game's root folder (the one containing `bin\`,
+next to `Cyberpunk2077.exe`'s parent) and simply merge their files in.
+
+1. **[RED4ext](https://github.com/WopsS/RED4ext/releases)** — CET's loader. The archive
+   contains `bin\x64\winmm.dll` and a `red4ext\` folder.
+2. **[Cyber Engine Tweaks](https://github.com/maximegmd/CyberEngineTweaks/releases)**
+   v1.37.1 or newer — take `cet_x.y.z.zip`. It contains `bin\x64\version.dll`,
+   `bin\x64\plugins\cyber_engine_tweaks.asi` and the `cyber_engine_tweaks\` folder.
+
+Start the game once at this point. CET shows a first-run window where you pick the overlay
+key and confirm; if that window never appears, CET is not loading and there is no point
+continuing until it does.
+
+### The mod
+
+1. Make sure CET works (its overlay opens in game).
 2. Copy the `CyberLooter` folder into
    `Cyberpunk 2077\bin\x64\plugins\cyber_engine_tweaks\mods\`.
 3. Start the game and open the CET overlay (`~` by default).

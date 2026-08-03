@@ -25,9 +25,11 @@ by holding a single key.
 
 ## Dependencies
 
-Exactly one: **Cyber Engine Tweaks** (current release v1.37.1).
+Exactly one: **Cyber Engine Tweaks** (current release v1.37.1). CET itself is built on
+RED4ext, so the player needs RED4ext + CET in the game — but the mod never talks to
+RED4ext directly and would keep working if CET changed its own foundation.
 
-Not used and not required: redscript, RED4ext, ArchiveXL, TweakXL, Codeware, Mod Settings,
+Not used and not required: redscript, ArchiveXL, TweakXL, Codeware, Mod Settings,
 Native Settings UI. Settings live in an own ImGui window and an own `config.json`.
 Installing the mod is copying one folder.
 
