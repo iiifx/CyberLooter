@@ -193,6 +193,76 @@ target = TS_TargetPartInfo.GetComponent(targets[i]).GetEntity() as GameObject;
 результат каждой пишем в диагностический лог. Первый же запуск на твоей машине покажет,
 какая работает, — и лишние выкинем.
 
+## 10. Подсказки кнопок можно рисовать движком — ПРОВЕРЕНО
+
+Это отменяет необходимость рисовать индикатор самим. В игре есть штатная система хинтов,
+та самая, что показывает «Подобрать», «Удерживать — оттащить тело» и т.п.
+
+Игровой код, `cyberpunk/player/psm/defaultTransition.swift:1709`:
+
+```swift
+protected final const func ShowInputHint(scriptInterface, actionName: CName, source: CName,
+    label: script_ref<String>, opt holdIndicationType: inkInputHintHoldIndicationType,
+    opt enableHoldAnimation: Bool, ...) -> Void {
+  data.action = actionName;
+  data.source = source;
+  data.localizedLabel = Deref(label);
+  data.holdIndicationType = holdIndicationType;
+  data.enableHoldAnimation = enableHoldAnimation;
+  evt = new UpdateInputHintEvent();
+  evt.data = data;
+  evt.show = true;
+  evt.targetHintContainer = n"GameplayInputHelper";
+  scriptInterface.GetUISystem().QueueEvent(evt);
+}
+```
+
+Структура (`orphans.swift:27943`) и enum (`orphans.swift:6983`):
+
+```swift
+public native struct InputHintData {
+  action, source, groupId: CName;
+  localizedLabel: String;
+  queuePriority, sortingPriority: Int32;
+  holdIndicationType: inkInputHintHoldIndicationType;   // FromInputConfig | Press | Hold
+  enableHoldAnimation: Bool;
+  ...
+}
+```
+
+В CET для этого есть **готовый глобальный хелпер** — `Definitions/Game_Definitions/globals.lua:3679`:
+
+```lua
+---@param show Bool
+---@param data gameuiInputHintData
+---@param targetHintContainer CName|string
+function Game.SendInputHintData(show, data, targetHintContainer) return end
+```
+
+Структура конструируется из Lua: `gameuiInputHintData.new()`
+(`Definitions/Game_Definitions/classes/gameuiInputHintData.lua`).
+
+**Вывод.** Индикатор — это не наша отрисовка, а вызов движка:
+
+```lua
+local hint = gameuiInputHintData.new()
+hint.action = CName.new("Choice1")     -- движок сам подставит клавишу игрока
+hint.source = CName.new("CyberLooter")
+hint.localizedLabel = "Собрать всё · 7"
+hint.holdIndicationType = inkInputHintHoldIndicationType.Hold
+hint.enableHoldAnimation = true
+Game.SendInputHintData(true, hint, "GameplayInputHelper")
+```
+
+Плюсы: родной стиль, родное место на экране, родная анимация удержания, автоматическая
+иконка клавиши для клавиатуры и геймпада.
+
+Открытые вопросы (гипотезы, проверяются логом на первой выкатке):
+- обновляется ли существующий хинт при повторной отправке с тем же `action`+`source`,
+  или дублируется (план Б — снимать через `show=false` и слать заново);
+- совпадёт ли тайминг родной анимации удержания с нашим порогом (задаётся конфигом
+  действия в движке, не нами).
+
 ---
 
 ## Сводка рисков
