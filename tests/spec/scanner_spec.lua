@@ -38,6 +38,22 @@ describe("Scanner.IsRestrictedItem", function()
         isNil(log.find("must be gameItemID"), "the record lookup rejected its own argument")
     end)
 
+    it("refuses a weapon that belongs to a vehicle", function()
+        -- These carry the ordinary Weapon equip area, so nothing in the record
+        -- marks them as unusable; the record path is the only signal there is.
+        local Scanner = setup()
+        isTrue(Scanner.IsRestrictedItem(Stub.vehicleWeapon({})))
+        isTrue(Scanner.IsRestrictedItem(Stub.vehicleWeapon({ name = "Items.Vehicle_Power_Weapon_Right_A" })))
+    end)
+
+    it("does not mistake an ordinary weapon for vehicle hardware", function()
+        local Scanner = setup()
+        isFalse(Scanner.IsRestrictedItem(Stub.item({
+            name = "Items.Preset_Lexington_Default",
+            equipArea = "EquipmentArea.Weapon",
+        })))
+    end)
+
     it("treats an unanswerable item as allowed rather than forbidden", function()
         -- Failing the other way turns one unavailable API into a dead mod: every
         -- item restricted, every object empty, nothing to loot anywhere.
@@ -131,6 +147,18 @@ describe("Scanner.Get", function()
         local objects = Scanner.Get()
         eq(#objects, 2)
         isTrue(objects[1].distance < objects[2].distance)
+    end)
+
+    it("leaves a car's mounted weapons on the car", function()
+        local Scanner, world = setup()
+        world.targeting = {
+            Stub.container({ items = { Stub.vehicleWeapon({}), Stub.vehicleWeapon({
+                name = "Items.Vehicle_Power_Weapon_Right_A" }) } }),
+        }
+
+        local objects, stacks = Scanner.Get()
+        eq(#objects, 0)
+        eq(stacks, 0)
     end)
 
     it("skips an object that holds nothing but a hand-carried weapon", function()

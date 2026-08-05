@@ -21,9 +21,11 @@ other mods. Installing CyberLooter itself is copying one folder.
 - Works on corpses, containers, stashes and items lying on the ground. Aiming at them is
   not required — the search is by distance, not by line of sight.
 - Picks up everything the game allows, junk and broken weapons included. Quest loot is
-  skipped by default so that scripted quest objects are never disturbed, and hand-carried
-  heavy weapons are always left alone — the game equips those into your hands rather than
-  your backpack, and moving one as loot leaves the character holding nothing.
+  skipped by default so that scripted quest objects are never disturbed. Two things are
+  never taken: hand-carried heavy weapons, which the game equips into your hands rather
+  than your backpack, and vehicle-mounted weapons. Both are invisible in the inventory,
+  cannot be dropped or sold, and cost carry weight — see **Remove stuck items** below if a
+  save already has some.
 - Shows the count of available loot as a **native game button prompt** in the usual place
   on screen (`Loot All · 7`), using the engine's own input-hint system, so it matches the
   game's styling and hold animation. No prompt appears when there is nothing to pick up.
@@ -202,10 +204,18 @@ objects and item stacks were found, what was transferred, which call path was us
 where anything failed.
 
 **Dump inventory to log** writes everything the player is carrying to the log: name,
-quantity, weight and equip area, heaviest first. The backpack UI is a view, not the
-inventory - an item it has no place for is simply not drawn, while its weight still counts
-against the carry limit - so this is the way to find out what is really in there. It reads
-the inventory and changes nothing in it.
+quantity, weight, equip area, item type, category and tags, heaviest first. The backpack UI
+is a view, not the inventory — an item it has no place for is simply not drawn, while its
+weight still counts against the carry limit — so this is the way to find out what is really
+in there. It reads the inventory and changes nothing in it.
+
+**Remove stuck items** deletes what should never have reached the backpack: vehicle-mounted
+weapons and hand-carried heavy weapons. Neither can be seen in the inventory, equipped, sold
+or dropped, and both cost carry weight — one session ended 183 kg over the limit on sixteen
+of them. The button lists what it found and asks a second time before deleting anything, and
+never touches whatever the player currently has equipped. Everything removed is named in the
+log. With the current filters nothing new can get stuck, so this is a repair tool for saves
+that already have the problem.
 
 The settings window also shows live diagnostics: the assigned key, the active scan
 strategy, the current object and stack count in radius, and the result of the last sweep.

@@ -1,14 +1,18 @@
--- The inventory dump, which exists because the backpack UI does not show
--- everything the inventory actually holds.
+-- The inventory dump and the cleanup, which exist because the backpack UI does
+-- not show everything the inventory actually holds.
 
 local Stub = require("tests/support/game.lua")
 
 local function setup()
     local world = Stub.install()
     local log = Stub.log()
+    local State = { GetPlayer = function() return world.player end }
+
+    local Scanner = Stub.load("Modules/Scanner.lua")
+    Scanner.Init({ Log = log, Config = Stub.config(), State = State })
 
     local Audit = Stub.load("Modules/Audit.lua")
-    Audit.Init({ Log = log, State = { GetPlayer = function() return world.player end } })
+    Audit.Init({ Log = log, State = State, Scanner = Scanner })
 
     return Audit, world, log
 end
@@ -44,18 +48,39 @@ describe("Audit.DumpInventory", function()
         contains(log.text(), "carry capacity 200")
     end)
 
-    it("calls out a hand-carried weapon sitting in the inventory", function()
-        -- This is the whole reason the dump exists: such a weapon is invisible in
-        -- the backpack, cannot be dropped from it, and still costs carry weight.
+    it("records what the game says an item is, so a real filter can be built", function()
+        -- Nothing decides anything on these today. They are in the dump because
+        -- an item the backpack refuses to draw is classified as something,
+        -- somewhere, and guessing which field is what cost a day already.
         local Audit, world, log = setup()
         world.player.__items = {
-            Stub.item({ name = "shard", weight = 0.0 }),
-            Stub.heavyWeapon({ weight = 30.0 }),
+            Stub.item({
+                name = "pistol",
+                weight = 3.0,
+                equipArea = "EquipmentArea.Weapon",
+                itemType = "ItemType.Wea_Handgun",
+                category = "ItemCategory.Weapon",
+                recordTags = { "Weapon", "SaveableItem" },
+            }),
         }
 
         Audit.DumpInventory()
-        contains(log.text(), "!!")
-        contains(log.text(), "1 hand-carried weapon(s) are sitting in the inventory")
+        contains(log.text(), "area=EquipmentArea.Weapon")
+        contains(log.text(), "type=ItemType.Wea_Handgun")
+        contains(log.text(), "cat=ItemCategory.Weapon")
+        contains(log.text(), "tags=Weapon+SaveableItem")
+    end)
+
+    it("flags both kinds of stuck item", function()
+        local Audit, world, log = setup()
+        world.player.__items = {
+            Stub.item({ name = "shard", weight = 0.0 }),
+            Stub.heavyWeapon({ weight = 11.0 }),
+            Stub.vehicleWeapon({}),
+        }
+
+        Audit.DumpInventory()
+        contains(log.text(), "2 entries (22.5 weight) do not belong in a backpack")
     end)
 
     it("says nothing alarming when the inventory is clean", function()
@@ -63,7 +88,7 @@ describe("Audit.DumpInventory", function()
         world.player.__items = { Stub.item({ name = "pistol", weight = 3.0 }) }
 
         Audit.DumpInventory()
-        isNil(log.find("hand-carried weapon(s) are sitting"))
+        isNil(log.find("do not belong in a backpack"))
     end)
 
     it("lists the heaviest item first", function()
@@ -105,5 +130,93 @@ describe("Audit.DumpInventory", function()
 
         eq(Audit.DumpInventory(), 0)
         contains(log.text(), "no player")
+    end)
+end)
+
+describe("Audit.FindStuckItems", function()
+    it("finds nothing in an ordinary inventory", function()
+        local Audit, world = setup()
+        world.player.__items = { Stub.item({ name = "pistol", weight = 3.0 }) }
+
+        local stuck, weight = Audit.FindStuckItems()
+        eq(#stuck, 0)
+        eq(weight, 0.0)
+    end)
+
+    it("finds vehicle weapons and heavy weapons, and adds up their weight", function()
+        local Audit, world = setup()
+        world.player.__items = {
+            Stub.vehicleWeapon({}),
+            Stub.vehicleWeapon({ name = "Items.Vehicle_Power_Weapon_Right_A" }),
+            Stub.heavyWeapon({ weight = 11.0 }),
+            Stub.item({ name = "pistol", weight = 3.0 }),
+        }
+
+        local stuck, weight = Audit.FindStuckItems()
+        eq(#stuck, 3)
+        eq(weight, 34.0)
+    end)
+
+    it("never counts the weapon in the player's hands", function()
+        local Audit, world = setup()
+        world.player.__items = { Stub.heavyWeapon({ weight = 11.0, equipped = true }) }
+
+        eq(#Audit.FindStuckItems(), 0)
+    end)
+end)
+
+describe("Audit.RemoveStuckItems", function()
+    it("deletes exactly the stuck entries and leaves everything else", function()
+        local Audit, world, log = setup()
+        world.player.__items = {
+            Stub.vehicleWeapon({}),
+            Stub.item({ name = "pistol", weight = 3.0 }),
+            Stub.heavyWeapon({ weight = 11.0 }),
+        }
+
+        local removed, freed = Audit.RemoveStuckItems()
+        eq(removed, 2)
+        eq(freed, 22.5)
+        eq(#world.player.__items, 1)
+        eq(world.player.__items[1].__id.value, "pistol")
+    end)
+
+    it("names every item it deletes", function()
+        local Audit, world, log = setup()
+        world.player.__items = { Stub.vehicleWeapon({}) }
+
+        Audit.RemoveStuckItems()
+        contains(log.text(), "removed Items.Vehicle_Power_Weapon_Left_A x1")
+    end)
+
+    it("does nothing when there is nothing stuck", function()
+        local Audit, world, log = setup()
+        world.player.__items = { Stub.item({ name = "pistol", weight = 3.0 }) }
+
+        eq(Audit.RemoveStuckItems(), 0)
+        contains(log.text(), "nothing to remove")
+        eq(#world.player.__items, 1)
+    end)
+
+    it("reports a removal the game refuses instead of counting it", function()
+        local Audit, world, log = setup()
+        world.player.__items = { Stub.vehicleWeapon({}) }
+        world.removeFails = true
+
+        local removed = Audit.RemoveStuckItems()
+        eq(removed, 0)
+        contains(log.text(), "could not remove")
+    end)
+
+    it("recomputes rather than trusting a stale preview", function()
+        -- The preview is cached for the settings window; deleting from a cache
+        -- built before the inventory changed would delete the wrong things.
+        local Audit, world = setup()
+        world.player.__items = { Stub.vehicleWeapon({}) }
+        eq(#Audit.FindStuckItems(), 1)
+
+        world.player.__items = { Stub.item({ name = "pistol", weight = 3.0 }) }
+        eq(Audit.RemoveStuckItems(), 0)
+        eq(#world.player.__items, 1)
     end)
 end)

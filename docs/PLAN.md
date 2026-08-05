@@ -190,9 +190,14 @@ ended up being selected.
 Per object: quest check, restricted-content check, then
 `TransactionSystem:TransferAllItems(holder, player)`.
 
-Restricted items are those the game equips into the player's hands rather than into the
-inventory — heavy weapons, identified by the `WeaponHeavy` equip area, the machine-gun item
-types, or the `DiscardOnEmpty` tag. Bulk-transferring one leaves the player stuck in the
+Restricted items are those that must never reach the backpack. Two families: weapons the
+game equips into the player's hands rather than into the inventory, identified by the
+`WeaponHeavy` equip area, the machine-gun item types or the `DiscardOnEmpty` tag; and
+vehicle-mounted hardware, identified by an `Items.Vehicle_` record path. The second family
+declares the ordinary `Weapon` equip area and is indistinguishable from a real gun by any
+other field observed so far, which is why a name match is used — bluntly, but exactly. The
+verdict is memoised per record path, both because it cannot change during a session and
+because reading the path is a debug-facing call on a per-frame code path. Bulk-transferring one leaves the player stuck in the
 carrying pose holding an invisible weapon, so an object that also holds ordinary loot goes
 item by item instead, and an object holding nothing else is skipped entirely.
 

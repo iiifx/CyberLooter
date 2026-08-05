@@ -17,7 +17,7 @@ local Input = require("Modules/Input.lua")
 local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.2.7",
+    version = "0.3.0",
     ready = false,
 }
 
@@ -182,6 +182,8 @@ local function main()
                 interactionGuardBroken = State.interactionCheckBroken,
                 heavyFilterBroken = Scanner.restrictedCheckAnswered == false,
                 onDumpInventory = Audit.DumpInventory,
+                onFindStuck = Audit.FindStuckItems,
+                onRemoveStuck = Audit.RemoveStuckItems,
             })
         end
 

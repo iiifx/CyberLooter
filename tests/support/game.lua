@@ -29,6 +29,8 @@ function Stub.item(spec)
     _records[id.value] = {
         equipArea = spec.equipArea,
         itemType = spec.itemType,
+        category = spec.category,
+        recordTags = spec.recordTags,
         -- A missing record is a real possibility for some world objects.
         missing = spec.recordMissing == true,
     }
@@ -41,6 +43,7 @@ function Stub.item(spec)
         __quest = spec.quest == true,
         -- Lets a spec reproduce an item whose API is simply not answering.
         __brokenTags = spec.brokenTags == true,
+        __equipped = spec.equipped == true,
     }
 
     function item:GetID()
@@ -87,6 +90,16 @@ function Stub.heavyWeapon(spec)
     spec.equipArea = "EquipmentArea.WeaponHeavy"
     spec.itemType = "ItemType.Wea_HeavyMachineGun"
     spec.tags = spec.tags or { "DiscardOnEmpty" }
+    return Stub.item(spec)
+end
+
+-- The mounted weapons of a car: ordinary Weapon equip area, invisible in the
+-- backpack, 11.5 kg each. Fourteen of them once ended up in a real inventory.
+function Stub.vehicleWeapon(spec)
+    spec = spec or {}
+    spec.name = spec.name or "Items.Vehicle_Power_Weapon_Left_A"
+    spec.equipArea = "EquipmentArea.Weapon"
+    spec.weight = spec.weight or 11.5
     return Stub.item(spec)
 end
 
@@ -213,6 +226,8 @@ function Stub.install()
         photoMode = false,
         carryCapacity = 200.0,
         noItemWeightApi = false,
+        noSlotApi = false,
+        removeFails = false,
         blackboard = {
             isInMenu = false,
             hubVariant = nil,    -- see Stub.hub
@@ -279,6 +294,37 @@ function Stub.install()
                 table.remove(source.__items, index)
                 target.__items[#target.__items + 1] = item
                 return true
+            end
+        end
+
+        return false
+    end
+
+    function transactionSystem:RemoveItem(holder, itemID, quantity)
+        world.transfers[#world.transfers + 1] = { kind = "remove", source = holder, id = itemID.value }
+
+        if world.removeFails then
+            error("RemoveItem failed")
+        end
+
+        for index, item in ipairs(holder.__items) do
+            if item.__id.value == itemID.value then
+                table.remove(holder.__items, index)
+                return true
+            end
+        end
+
+        return false
+    end
+
+    function transactionSystem:IsSlotted(holder, itemID)
+        if world.noSlotApi then
+            error("IsSlotted is unavailable on this build")
+        end
+
+        for _, item in ipairs(holder.__items) do
+            if item.__id.value == itemID.value then
+                return item.__equipped == true
             end
         end
 
@@ -429,13 +475,41 @@ function Stub.install()
                         end,
                     }
                 end,
+
+                ItemCategory = function()
+                    if record.category == nil then
+                        return nil
+                    end
+                    return {
+                        Type = function()
+                            return record.category
+                        end,
+                    }
+                end,
+
+                Tags = function()
+                    if record.recordTags == nil then
+                        return nil
+                    end
+                    local tags = {}
+                    for index, name in ipairs(record.recordTags) do
+                        tags[index] = { value = name }
+                    end
+                    return tags
+                end,
             }
         end,
     }
 
     _G.TDBID = {
         ToStringDEBUG = function(tdbid)
-            return "Items." .. tostring(tdbid.value)
+            local value = tostring(tdbid.value)
+            -- Specs that need a full record path give one; the rest get the
+            -- ordinary Items. prefix the game uses.
+            if value:find("%.") then
+                return value
+            end
+            return "Items." .. value
         end,
     }
 

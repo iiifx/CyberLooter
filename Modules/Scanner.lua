@@ -87,9 +87,22 @@ end
 local RESTRICTED_ITEM_TYPES = { "Wea_HeavyMachineGun", "Wea_LightMachineGun" }
 local RESTRICTED_TAG = "DiscardOnEmpty"
 
+-- Hardware that belongs to a vehicle rather than to a person. The game gives
+-- these the ordinary Weapon equip area, so nothing about their record marks them
+-- as unusable, and they are invisible in the backpack while still costing carry
+-- weight: a single session left 14 of them in the player's inventory, 161 kg of
+-- a 200 kg limit. Matching on the record path is blunt, but it is exact, and it
+-- is the only signal that has been observed to separate them.
+local RESTRICTED_NAME_PATTERNS = { "^Items%.Vehicle_" }
+
 -- nil until the first item has been examined, then true/false.
 Scanner.restrictedCheckAnswered = nil
 local _restrictedWarned = false
+
+-- Whether an item type may be taken does not change during a session, so the
+-- verdict is remembered per record path. This is what makes it affordable to ask
+-- for the path at all: it is a debug-facing call, and the scan runs every 0.3 s.
+local _verdictByPath = {}
 
 -- Reading a member that the running build does not have must not throw.
 local function enumMember(enumTable, name)
@@ -130,12 +143,34 @@ local function probe(key, fn)
     return result == true
 end
 
-function Scanner.IsRestrictedItem(itemData)
-    if itemData == nil then
-        return false
+-- "Items.Preset_Lexington_Default" and the like, or nil when unavailable.
+function Scanner.ItemPath(itemData)
+    local ok, path = pcall(function()
+        return TDBID.ToStringDEBUG(ItemID.GetTDBID(itemData:GetID()))
+    end)
+
+    if ok and type(path) == "string" and path ~= "" then
+        return path
     end
 
+    return nil
+end
+
+local function judge(itemData, path)
     local answered = false
+
+    if path ~= nil then
+        for _, pattern in ipairs(RESTRICTED_NAME_PATTERNS) do
+            if path:match(pattern) then
+                Scanner.restrictedCheckAnswered = true
+                return true
+            end
+        end
+
+        -- Deliberately not counted as an answer: a readable path settles the
+        -- vehicle question and nothing else, so the heavy-weapon warning below
+        -- must still fire if none of those signals can be evaluated.
+    end
 
     -- A readable record is not by itself an answer: what counts is whether one of
     -- the actual signals below could be evaluated.
@@ -213,6 +248,26 @@ function Scanner.IsRestrictedItem(itemData)
     end
 
     return false
+end
+
+function Scanner.IsRestrictedItem(itemData)
+    if itemData == nil then
+        return false
+    end
+
+    local path = Scanner.ItemPath(itemData)
+
+    if path ~= nil and _verdictByPath[path] ~= nil then
+        return _verdictByPath[path]
+    end
+
+    local verdict = judge(itemData, path)
+
+    if path ~= nil then
+        _verdictByPath[path] = verdict
+    end
+
+    return verdict
 end
 
 -- Counts stacks rather than units: 45 rounds of ammo is one entry, which keeps

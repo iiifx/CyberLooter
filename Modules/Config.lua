@@ -31,6 +31,7 @@ local DEFAULTS = {
 
 Config.values = {}
 Config.isOverlayOpen = false
+Config.cleanupArmed = false
 
 local _dirty = false
 
@@ -206,10 +207,58 @@ function Config.DrawWindow(status)
         if ImGui.Button("Dump inventory to log") then
             Config.lastDump = string.format("%d entries written to the log",
                 status.onDumpInventory())
+            -- A fresh look at the inventory invalidates an armed deletion.
+            Config.cleanupArmed = false
         end
 
         if Config.lastDump ~= nil then
             ImGui.Text(Config.lastDump)
+        end
+    end
+
+    -- This one deletes items, so it asks twice and says exactly what it found.
+    if status.onFindStuck ~= nil then
+        local stuck, weight = status.onFindStuck()
+
+        if #stuck == 0 then
+            ImGui.Text("No stuck items in the inventory.")
+            Config.cleanupArmed = false
+        else
+            ImGui.TextColored(1.0, 0.6, 0.2, 1.0, string.format(
+                "%d stuck entries, %.1f weight - invisible in the backpack and not droppable.",
+                #stuck, weight))
+
+            -- Named in full: deletion is irreversible, so the list is on screen
+            -- before the second click, not only in the log afterwards.
+            for index, row in ipairs(stuck) do
+                if index > 8 then
+                    ImGui.Text(string.format("    ... and %d more", #stuck - 8))
+                    break
+                end
+                ImGui.Text(string.format("    %s x%d", row.name, row.quantity))
+            end
+
+            if not Config.cleanupArmed then
+                if ImGui.Button("Remove stuck items") then
+                    Config.cleanupArmed = true
+                end
+            else
+                if ImGui.Button(string.format("Confirm: delete %d entries", #stuck)) then
+                    Config.cleanupArmed = false
+                    local removed, freed = status.onRemoveStuck()
+                    Config.lastCleanup = string.format("%d entries removed, %.1f weight freed",
+                        removed, freed)
+                end
+
+                ImGui.SameLine()
+                if ImGui.Button("Cancel") then
+                    Config.cleanupArmed = false
+                end
+            end
+        end
+
+        if Config.lastCleanup ~= nil then
+            ImGui.Text(Config.lastCleanup)
         end
     end
 
