@@ -35,6 +35,9 @@ other mods. Installing CyberLooter itself is copying one folder.
   it stays armed and sweeps the moment the prompt goes away, so no re-press is needed.
 - If a single hold hits the per-sweep object limit, the rest stays where it is — just
   hold the key again.
+- Can also run **hands-free**: switch on automatic looting and the sweep repeats on a
+  timer, twice a second by default, with no key at all. It only acts when the scan has
+  actually found something nearby, so an empty street costs one cached scan per interval.
 
 ## Installation
 
@@ -147,6 +150,9 @@ The settings window appears together with the CET overlay. Settings are written 
 | Radius | 5 m | Pickup radius around the player |
 | Hold time | 0.35 s | How long the key must be held to trigger a sweep |
 | Max objects per sweep | 24 | Upper bound per activation, to avoid frame hitches |
+| Loot automatically, no key needed | off | Sweeps on a timer instead of on a key |
+| Sweep every | 0.5 s | How often automatic looting runs, 0.1–3 s |
+| Also while driving | off | Whether automatic looting runs while the player is in a vehicle |
 | Skip quest loot | on | Leave quest items and quest containers alone |
 | Ignore key while a vanilla prompt is up | on | Never interfere with normal interactions |
 | Show indicator | on | Show the button prompt when loot is nearby |
@@ -161,6 +167,26 @@ The settings window appears together with the CET overlay. Settings are written 
 The prompt text is the `hintLabel` field in `config.json` — there is no UI field for it.
 It is plain text rendered by the game, so it can be translated, but use characters the
 game's current language pack actually has, otherwise you will get empty boxes.
+
+### Automatic looting
+
+With the option on, the sweep runs on its own timer and the key is not needed. It is the
+same sweep with the same filters and the same limits — only the trigger changes.
+
+Three things are deliberately different from the manual mode:
+
+- **The button prompt is hidden.** A prompt saying "hold to loot" while the mod is already
+  looting would be wrong, and at two sweeps a second it would flicker.
+- **The vanilla-prompt guard does not apply.** That guard exists so the mod never acts on
+  top of the interact key, and there is no key here. Honouring it would switch automatic
+  looting off exactly when it is wanted, because looking at loot is what puts a prompt on
+  screen in the first place.
+- **A sweep that collects nothing buys silence.** If the scan promises objects and the
+  transfer empties none of them — a stuck handle, a container that refuses — retrying twice
+  a second would fill the log and cost frames, so the next few seconds are skipped.
+
+Menus, photo mode and loading screens still stop it, and by default so does being in a
+vehicle: driving past a district otherwise vacuums up whatever the radius touches.
 
 ## How it works
 

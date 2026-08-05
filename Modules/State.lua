@@ -69,6 +69,32 @@ function State.IsPhotoModeActive()
     return ok and result == true
 end
 
+-- True while the player is in a vehicle. Same source the game uses:
+-- VehicleSystem.IsPlayerInVehicle (vehicleSystem.script:43) reads this exact
+-- blackboard field rather than looking for a vehicle entity.
+function State.IsMounted()
+    local ok, result = pcall(function()
+        local player = State.GetPlayer()
+        if player == nil then
+            return false
+        end
+
+        local bb = player:GetPlayerStateMachineBlackboard()
+        if bb == nil then
+            return false
+        end
+
+        return bb:GetBool(GetAllBlackboardDefs().PlayerStateMachine.MountedToVehicle)
+    end)
+
+    if not ok then
+        Log.DebugThrottled("state.mounted", 30, "vehicle check failed: " .. tostring(result))
+        return false
+    end
+
+    return result == true
+end
+
 -- True when the game itself has an interaction prompt up (door, corpse, ladder...).
 -- Verified in player.swift:905 - a non-empty choices array means a live prompt.
 --

@@ -14,6 +14,11 @@ local DEFAULTS = {
     respectInteraction = true,
     maxObjectsPerSweep = 24,
 
+    -- Hands-free mode
+    autoLoot = false,
+    autoLootInterval = 0.5,
+    autoLootInVehicle = false,
+
     -- Native input hint
     showIndicator = true,
     hintShowKeyName = false,
@@ -156,6 +161,18 @@ function Config.DrawWindow(status)
     sliderInt("Max objects per sweep", "maxObjectsPerSweep", 4, 100)
     checkbox("Skip quest loot", "skipQuestItems")
     checkbox("Ignore key while a vanilla prompt is up", "respectInteraction")
+
+    ImGui.Separator()
+    ImGui.Text("Automatic looting")
+
+    checkbox("Loot automatically, no key needed", "autoLoot")
+
+    if Config.values.autoLoot then
+        sliderFloat("Sweep every (s)", "autoLootInterval", 0.1, 3.0, "%.2f")
+        checkbox("Also while driving", "autoLootInVehicle")
+        ImGui.Text("Status: " .. tostring(status.autoReason))
+        ImGui.Text("The button prompt is hidden while this is on.")
+    end
 
     ImGui.Separator()
     ImGui.Text("Indicator")

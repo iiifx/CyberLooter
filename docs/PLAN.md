@@ -77,6 +77,7 @@ CyberLooter/
     ├── Config.lua        settings, load/save, ImGui window
     ├── State.lua         game state gates — when the mod must keep quiet
     ├── Input.lua         hold timing, threshold, state
+    ├── Auto.lua          hands-free sweeps on a timer
     ├── Scanner.lua       radius search (three strategies with fallback)
     ├── Looter.lua        filtering and item transfer
     ├── Hint.lua          button prompt via the engine's own hint system
@@ -95,6 +96,9 @@ CyberLooter/
 | `skipQuestItems` | on | — |
 | `respectInteraction` | on | — |
 | `maxObjectsPerSweep` | 24 | 4–100 |
+| `autoLoot` | off | — |
+| `autoLootInterval` | 0.5 s | 0.1–3.0 |
+| `autoLootInVehicle` | off | — |
 | `showIndicator` | on | — |
 | `hintShowKeyName` | off | — |
 | `hintLabel` | `Loot All` | free text |
@@ -143,6 +147,22 @@ prompt is up stays live and fires the moment the gate opens, rather than being b
 requiring a fresh press.
 
 Registration happens at load time, never from `onInit` — see RESEARCH §11.
+
+### Auto.lua
+
+The same sweep on a timer instead of on a key, for players who cannot comfortably hold one.
+Gated on menu, photo mode and — unless the player says otherwise — being in a vehicle, which
+is read from `PlayerStateMachine.MountedToVehicle`, the same field
+`VehicleSystem.IsPlayerInVehicle` uses.
+
+Not gated on the vanilla interaction prompt, and that is the one deliberate asymmetry with
+the manual path: the gate exists so a key press never lands on top of an interaction, and
+there is no key here. Keeping it would disable automatic looting precisely when loot is in
+front of the player, since that is what raises a prompt.
+
+A sweep that collects nothing despite a non-empty scan pauses the loop for three seconds.
+Without that, an object that cannot be emptied is retried twice a second for as long as the
+player stands near it.
 
 ### Scanner.lua
 

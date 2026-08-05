@@ -161,6 +161,11 @@ function Stub.entity(spec)
         return self.__owner
     end
 
+    -- Only the player has one; the stub hands back the world's flag.
+    function entity:GetPlayerStateMachineBlackboard()
+        return spec.psmBlackboard
+    end
+
     return entity
 end
 
@@ -224,6 +229,7 @@ function Stub.install()
         targetingFails = false,
         byId = {},               -- for Game.FindEntityByID
         photoMode = false,
+        mounted = false,
         carryCapacity = 200.0,
         noItemWeightApi = false,
         noSlotApi = false,
@@ -353,6 +359,7 @@ function Stub.install()
     local defs = {
         UI_System = { IsInMenu = "IsInMenu" },
         UIInteractions = { InteractionChoiceHub = "InteractionChoiceHub" },
+        PlayerStateMachine = { MountedToVehicle = "MountedToVehicle" },
     }
 
     -- Globals the mod reaches for ------------------------------------------------
@@ -623,6 +630,11 @@ function Stub.install()
         class = "PlayerPuppet",
         parents = { ScriptedPuppet = true, gameObject = true },
         pos = { x = 0.0, y = 0.0, z = 0.0 },
+        psmBlackboard = {
+            GetBool = function(_, _)
+                return world.mounted
+            end,
+        },
     })
 
     return world

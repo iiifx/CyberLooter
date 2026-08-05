@@ -14,10 +14,11 @@ local Looter = require("Modules/Looter.lua")
 local Hint = require("Modules/Hint.lua")
 local Hud = require("Modules/Hud.lua")
 local Input = require("Modules/Input.lua")
+local Auto = require("Modules/Auto.lua")
 local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.3.1",
+    version = "0.4.0",
     ready = false,
 }
 
@@ -83,6 +84,14 @@ end
 
 -- Keeps the indicator honest: it is only shown when a sweep would actually run.
 local function updateIndicator()
+    -- A prompt that says "hold to loot" while the mod is already looting on its
+    -- own would be both wrong and, at two sweeps a second, a flicker.
+    if Config.values.autoLoot then
+        Hint.Clear()
+        resume()
+        return 0
+    end
+
     -- Deliberately not counted as suppression: the sweep runs regardless of
     -- whether the prompt is drawn, so there is nothing to report.
     if not Config.values.showIndicator then
@@ -119,6 +128,7 @@ local function main()
         Looter = Looter,
         Hint = Hint,
         Hud = Hud,
+        Auto = Auto,
         Audit = Audit,
         onSweep = onSweep,
     }
@@ -131,6 +141,7 @@ local function main()
     Hint.Init(deps)
     Hud.Init(deps)
     Input.Init(deps)
+    Auto.Init(deps)
     Audit.Init(deps)
 
     registerForEvent("onInit", function()
@@ -157,6 +168,7 @@ local function main()
         Scanner.Tick(dt)
         Hint.Tick(dt)
         Input.Tick(dt)
+        Auto.Tick(dt)
 
         _lastStacks = updateIndicator()
     end)
@@ -181,6 +193,7 @@ local function main()
                 hintForcedFallback = Hint.forcedFallback,
                 interactionGuardBroken = State.interactionCheckBroken,
                 heavyFilterBroken = Scanner.restrictedCheckAnswered == false,
+                autoReason = Auto.lastReason,
                 onDumpInventory = Audit.DumpInventory,
                 onFindStuck = Audit.FindStuckItems,
                 onRemoveStuck = Audit.RemoveStuckItems,
