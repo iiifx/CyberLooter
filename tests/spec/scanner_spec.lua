@@ -54,6 +54,25 @@ describe("Scanner.IsRestrictedItem", function()
         })))
     end)
 
+    it("refuses anything the game's own inventory filter hides", function()
+        -- UIInventoryItemsManager.GetBlacklistedTags(): an item carrying one of
+        -- these never enters the player's item map at all, so it cannot be seen,
+        -- equipped, sold or dropped - only carried.
+        local Scanner = setup()
+        for _, tag in ipairs({ "HideInUI", "HideInBackpackUI", "TppHead", "base_fists" }) do
+            isTrue(Scanner.IsRestrictedItem(Stub.item({ name = "hidden_" .. tag, tags = { tag } })),
+                tag .. " should be refused")
+        end
+    end)
+
+    it("still takes money and ammo, which are hidden for a different reason", function()
+        -- Currency and Ammo are on the same blacklist, but they are hidden
+        -- because they have their own counters, not because they are junk.
+        local Scanner = setup()
+        isFalse(Scanner.IsRestrictedItem(Stub.item({ name = "money", tags = { "Currency" } })))
+        isFalse(Scanner.IsRestrictedItem(Stub.item({ name = "rounds", tags = { "Ammo" } })))
+    end)
+
     it("treats an unanswerable item as allowed rather than forbidden", function()
         -- Failing the other way turns one unavailable API into a dead mod: every
         -- item restricted, every object empty, nothing to loot anywhere.

@@ -193,7 +193,11 @@ Per object: quest check, restricted-content check, then
 Restricted items are those that must never reach the backpack. Two families: weapons the
 game equips into the player's hands rather than into the inventory, identified by the
 `WeaponHeavy` equip area, the machine-gun item types or the `DiscardOnEmpty` tag; and
-vehicle-mounted hardware, identified by an `Items.Vehicle_` record path. The second family
+anything the game's own inventory system refuses to load, identified by the tags
+`HideInUI`, `HideInBackpackUI`, `TppHead` and `base_fists` (RESEARCH §12) — the same test
+the backpack applies through `GetItemListExcludingTags`, minus `Currency` and `Ammo`, which
+are hidden for having their own counters rather than for being unwanted; and vehicle-mounted
+hardware, identified by an `Items.Vehicle_` record path. The second family
 declares the ordinary `Weapon` equip area and is indistinguishable from a real gun by any
 other field observed so far, which is why a name match is used — bluntly, but exactly. The
 verdict is memoised per record path, both because it cannot change during a session and

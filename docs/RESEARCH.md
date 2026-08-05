@@ -316,6 +316,78 @@ correctly regardless of when they are opened.
 
 ---
 
+## 12. Which items belong in the player's inventory
+
+Source: the decompiled game scripts, `CDPR-Modding-Documentation/Cyberpunk-Scripts`.
+
+There is no single engine predicate such as `CanItemBeAddedToInventory`. Searching the
+whole script dump for one turns up only neighbours of the idea — `RPGManager.CanItemBeDropped`
+(rpgManager.script:2960), `CanItemBeDisassembled`, `CanItemTypeBeCompared` — none of which
+answers "should the player be carrying this at all".
+
+What exists instead is better, because it is what the game itself acts on: **a tag
+blacklist applied at the transaction layer.**
+
+```
+UIInventoryItemsManager.GetBlacklistedTags()      inventoryItemsManager.script:445
+    'SoftwareShsard'   (CDPR's own typo, in shipped code)
+    'TppHead'
+    'HideInUI'
+    'Currency'
+    'Ammo'
+    'base_fists'
+```
+
+The UI inventory system does not filter these out after the fact. It never loads them:
+
+```
+m_transactionSystem.GetItemListExcludingTags( m_attachedPlayer, m_blacklistedTags, playerItems )
+                                                  uiInventoryScriptableSystem.script:69
+```
+
+`GetItemListExcludingTags` is a native transaction-system function
+(transactionSystem.script:47), alongside `GetItemListByTag`, `GetItemListByTags` and
+`GetItemListFilteredByTags`. The same file's `IsBackpackItem` logic
+(uiInventoryScriptableSystem.script:477-486) computes exactly this from `itemRecord.Tags()`.
+The backpack screen adds one more tag of its own:
+
+```
+tagsToFilterOut.PushBack( 'HideInBackpackUI' )     backpack_main.script:439
+tagsToFilterOut.PushBack( 'SoftwareShard' )
+```
+
+So an item tagged `HideInUI` or `HideInBackpackUI` is not merely hidden — it never enters
+the player's item map, which is why one cannot be seen, equipped, sold, dropped or
+disassembled, while its weight still counts. That is precisely the failure the player hit:
+an inventory 205 units into a 200 unit limit, with nothing visible to remove.
+
+Two of the six blacklisted tags must **not** be treated as "do not loot". `Currency` and
+`Ammo` are hidden from the backpack because they have their own counters, not because they
+are unwanted. The mod therefore refuses `HideInUI`, `HideInBackpackUI`, `TppHead` and
+`base_fists`, and takes money and ammunition as before.
+
+### Vehicle weapons
+
+`gamedataItemType` has two dedicated members — `Wea_VehiclePowerWeapon` and
+`Wea_VehicleMissileLauncher` (tweakDBEnums.script:148-149) — and every use of them in the
+scripts is an explicit comparison (vehicleTransition.script:2588, weaponRoster.script:337,
+damageSystem.script:3077). There is no "is this a vehicle weapon" helper: CDPR does compare
+against the enum by hand, which was worth confirming rather than assuming.
+
+Whether `Items.Vehicle_Power_Weapon_Left_A` also carries `HideInUI` cannot be answered from
+the script dump, because TweakDB item data is not part of it. The mod's inventory dump now
+prints each item's tags, so the next log from a real session settles it. Until then both
+rules are in place: the tag test, and a record-path match on `Items.Vehicle_`.
+
+### What this does not settle
+
+The heavy-weapon case is separate and stays as it is. A `WeaponHeavy` weapon is a perfectly
+normal item that the game equips into the player's hands through
+`LootPickupScriptedCondition` (scriptedConditions.script:383) rather than into the backpack;
+it is not tag-blacklisted, and it broke the player's character state when moved as loot.
+
+---
+
 ## Risk summary
 
 | Risk | Assessment | Mitigation |
@@ -325,4 +397,5 @@ correctly regardless of when they are opened.
 | Conflict with the vanilla interact key | Low | `InteractionChoiceHub` check before acting |
 | Frame drops at large radius | Low | Throttled scanning, per-sweep object cap |
 | Broken quest | Low | `IsQuest()` filter, on by default |
-| Inventory filling with junk | Certain | A deliberate user choice; filters left for later |
+| Inventory filling with junk | Certain | A deliberate user choice |
+| Items that cannot be seen or dropped | Handled | Refused by the game's own tag blacklist (§12); a cleanup tool exists for saves that already have some |

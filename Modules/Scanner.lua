@@ -87,6 +87,26 @@ end
 local RESTRICTED_ITEM_TYPES = { "Wea_HeavyMachineGun", "Wea_LightMachineGun" }
 local RESTRICTED_TAG = "DiscardOnEmpty"
 
+-- The game's own answer to "does this belong in a backpack".
+--
+-- UIInventoryItemsManager.GetBlacklistedTags() (inventoryItemsManager.script:445)
+-- lists the tags whose items the inventory refuses to show, and the UI inventory
+-- system builds the entire player item map through
+--     TransactionSystem.GetItemListExcludingTags(player, blacklist, out items)
+-- (uiInventoryScriptableSystem.script:69), so a tagged item is not merely hidden -
+-- it never enters the UI's world at all. backpack_main.script:439 excludes
+-- HideInBackpackUI on top of that.
+--
+-- Two of the six blacklisted tags are deliberately not here. Currency and Ammo
+-- are hidden from the backpack because they have their own counters, not because
+-- they should be left on the ground.
+local HIDDEN_ITEM_TAGS = {
+    "HideInUI",          -- the general marker for "not a player-facing item"
+    "HideInBackpackUI",  -- shown in some screens, never in the backpack
+    "TppHead",           -- the third-person head, an internal entity item
+    "base_fists",        -- the player's fists as an item
+}
+
 -- Hardware that belongs to a vehicle rather than to a person. The game gives
 -- these the ordinary Weapon equip area, so nothing about their record marks them
 -- as unusable, and they are invisible in the backpack while still costing carry
@@ -170,6 +190,25 @@ local function judge(itemData, path)
         -- Deliberately not counted as an answer: a readable path settles the
         -- vehicle question and nothing else, so the heavy-weapon warning below
         -- must still fire if none of those signals can be evaluated.
+    end
+
+    -- The game's own test, and the one worth trusting most: an item the
+    -- inventory system filters out by tag can never be seen, equipped, sold or
+    -- dropped by the player, so taking it only costs carry weight.
+    local hidden = probe("hidden", function()
+        for _, tag in ipairs(HIDDEN_ITEM_TAGS) do
+            if itemData:HasTag(CName.new(tag)) then
+                return true
+            end
+        end
+        return false
+    end)
+    if hidden == true then
+        Scanner.restrictedCheckAnswered = true
+        return true
+    end
+    if hidden ~= nil then
+        answered = true
     end
 
     -- A readable record is not by itself an answer: what counts is whether one of

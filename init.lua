@@ -17,7 +17,7 @@ local Input = require("Modules/Input.lua")
 local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.3.0",
+    version = "0.3.1",
     ready = false,
 }
 
