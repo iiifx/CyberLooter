@@ -200,6 +200,19 @@ function Config.DrawWindow(status)
         Log.Reset()
     end
 
+    -- Reads nothing but the player's own inventory and changes nothing in it.
+    if status.onDumpInventory ~= nil then
+        ImGui.SameLine()
+        if ImGui.Button("Dump inventory to log") then
+            Config.lastDump = string.format("%d entries written to the log",
+                status.onDumpInventory())
+        end
+
+        if Config.lastDump ~= nil then
+            ImGui.Text(Config.lastDump)
+        end
+    end
+
     ImGui.End()
     ImGui.PopStyleVar(1)
 end

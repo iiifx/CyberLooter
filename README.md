@@ -201,6 +201,12 @@ If something misbehaves, turn the switch on, play for a couple of minutes, then 
 objects and item stacks were found, what was transferred, which call path was used and
 where anything failed.
 
+**Dump inventory to log** writes everything the player is carrying to the log: name,
+quantity, weight and equip area, heaviest first. The backpack UI is a view, not the
+inventory - an item it has no place for is simply not drawn, while its weight still counts
+against the carry limit - so this is the way to find out what is really in there. It reads
+the inventory and changes nothing in it.
+
 The settings window also shows live diagnostics: the assigned key, the active scan
 strategy, the current object and stack count in radius, and the result of the last sweep.
 It also warns when one of the safety checks cannot run on the current build — an inactive

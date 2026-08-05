@@ -14,9 +14,10 @@ local Looter = require("Modules/Looter.lua")
 local Hint = require("Modules/Hint.lua")
 local Hud = require("Modules/Hud.lua")
 local Input = require("Modules/Input.lua")
+local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.2.6",
+    version = "0.2.7",
     ready = false,
 }
 
@@ -118,6 +119,7 @@ local function main()
         Looter = Looter,
         Hint = Hint,
         Hud = Hud,
+        Audit = Audit,
         onSweep = onSweep,
     }
 
@@ -129,6 +131,7 @@ local function main()
     Hint.Init(deps)
     Hud.Init(deps)
     Input.Init(deps)
+    Audit.Init(deps)
 
     registerForEvent("onInit", function()
         -- Observers need the game's script classes, which only exist by now.
@@ -178,6 +181,7 @@ local function main()
                 hintForcedFallback = Hint.forcedFallback,
                 interactionGuardBroken = State.interactionCheckBroken,
                 heavyFilterBroken = Scanner.restrictedCheckAnswered == false,
+                onDumpInventory = Audit.DumpInventory,
             })
         end
 

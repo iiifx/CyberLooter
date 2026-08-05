@@ -35,6 +35,7 @@ function Stub.item(spec)
 
     local item = {
         __id = id,
+        __weight = spec.weight,
         __quantity = spec.quantity or 1,
         __tags = spec.tags or {},
         __quest = spec.quest == true,
@@ -48,6 +49,13 @@ function Stub.item(spec)
 
     function item:GetQuantity()
         return self.__quantity
+    end
+
+    function item:GetStatValueCurrent(stat)
+        if self.__weight == nil then
+            error("no such stat")
+        end
+        return self.__weight
     end
 
     function item:HasTag(tag)
@@ -203,6 +211,8 @@ function Stub.install()
         targetingFails = false,
         byId = {},               -- for Game.FindEntityByID
         photoMode = false,
+        carryCapacity = 200.0,
+        noItemWeightApi = false,
         blackboard = {
             isInMenu = false,
             hubVariant = nil,    -- see Stub.hub
@@ -349,6 +359,14 @@ function Stub.install()
         end,
 
         SendInputHintData = function() end,
+
+        GetStatsSystem = function()
+            return {
+                GetStatValue = function(_, _, _)
+                    return world.carryCapacity
+                end,
+            }
+        end,
     }
 
     _G.GetAllBlackboardDefs = function()
@@ -366,6 +384,17 @@ function Stub.install()
     end
 
     _G.RPGManager = {
+        -- Present on some builds and not on others, so the specs can take it away.
+        GetItemWeight = function(itemData)
+            if world.noItemWeightApi then
+                error("GetItemWeight is unavailable on this build")
+            end
+            if itemData.__weight == nil then
+                error("no weight for this item")
+            end
+            return itemData.__weight
+        end,
+
         GetItemRecord = function(itemID)
             -- The engine is strict about this and so is the stub: handing it the
             -- TweakDBID out of an ItemID is precisely the bug this guards.
@@ -402,6 +431,17 @@ function Stub.install()
                 end,
             }
         end,
+    }
+
+    _G.TDBID = {
+        ToStringDEBUG = function(tdbid)
+            return "Items." .. tostring(tdbid.value)
+        end,
+    }
+
+    _G.gamedataStatType = {
+        Weight = "StatType.Weight",
+        CarryCapacity = "StatType.CarryCapacity",
     }
 
     _G.ItemID = {
