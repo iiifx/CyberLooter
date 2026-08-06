@@ -118,6 +118,8 @@ function Stub.entity(spec)
         __hash = nextHash(),
         __dead = spec.dead == true,
         __defeated = spec.defeated == true,
+        __unconscious = spec.unconscious == true,
+        __turnedOff = spec.turnedOff == true,
         __quest = spec.quest == true,
         __drop = spec.drop,
         __owner = spec.owner,
@@ -147,6 +149,10 @@ function Stub.entity(spec)
 
     function entity:IsDead()
         return self.__dead
+    end
+
+    function entity:IsIncapacitated()
+        return self.__dead or self.__defeated or self.__unconscious
     end
 
     function entity:IsQuest()
@@ -183,6 +189,19 @@ function Stub.livingNpc(spec)
     spec.parents = spec.parents or { ScriptedPuppet = true, gameObject = true }
     spec.dead = false
     spec.defeated = false
+    spec.unconscious = false
+    spec.turnedOff = false
+    return Stub.entity(spec)
+end
+
+-- Knocked out rather than killed: alive, fully lootable, and the case the mod
+-- used to walk straight past.
+function Stub.unconsciousNpc(spec)
+    spec = spec or {}
+    spec.class = spec.class or "NPCPuppet"
+    spec.parents = spec.parents or { ScriptedPuppet = true, gameObject = true }
+    spec.dead = false
+    spec.unconscious = true
     return Stub.entity(spec)
 end
 
@@ -233,6 +252,7 @@ function Stub.install()
         carryCapacity = 200.0,
         noItemWeightApi = false,
         noSlotApi = false,
+        noIsActiveApi = false,
         removeFails = false,
         blackboard = {
             isInMenu = false,
@@ -560,8 +580,25 @@ function Stub.install()
     _G.gamedataMappinVariant = { LootVariant = "LootVariant" }
 
     _G.ScriptedPuppet = {
+        IsActive = function(entity)
+            if world.noIsActiveApi then
+                error("IsActive is unavailable on this build")
+            end
+            -- The engine's own definition, negated the same way.
+            return not (entity.__dead or entity.__defeated
+                or entity.__unconscious or entity.__turnedOff)
+        end,
+
         IsDefeated = function(entity)
             return entity.__defeated == true
+        end,
+
+        IsUnconscious = function(entity)
+            return entity.__unconscious == true
+        end,
+
+        IsTurnedOff = function(entity)
+            return entity.__turnedOff == true
         end,
     }
 

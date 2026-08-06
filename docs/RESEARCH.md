@@ -394,6 +394,27 @@ it is not tag-blacklisted, and it broke the player's character state when moved 
 
 ---
 
+## 13. When is a body lootable
+
+`ScriptedPuppet.IsActive` (scriptedPuppet.script:1939, `IsActiveInternal` at :1950) is the
+engine's own test, and it is a conjunction of five:
+
+```
+not IsDeadNoStatPool() and not IsDefeated() and not IsUnconscious()
+    and not IsTurnedOffNoStatusEffect() and not IsIncapacitated()
+```
+
+`IsDefeated` and `IsUnconscious` (:1849, :1866) are status-effect queries, not health
+checks, which is why a knocked-out enemy fails none of the health tests while being just as
+lootable as a corpse. The game gates the loot highlight on the same value
+(`GetDefaultHighlight`, :4771: `!IsActive() && !HasLootableItems(...)`).
+
+`IsDead()` (:1981) reads the health stat pool, while `IsDeadNoStatPool()` (:1988) reads the
+persistent state flag — they are not interchangeable, and neither one alone answers the
+question.
+
+---
+
 ## Risk summary
 
 | Risk | Assessment | Mitigation |

@@ -183,6 +183,49 @@ describe("Scanner.Get", function()
         eq(#objects, 1)
     end)
 
+    it("loots an enemy that was knocked out rather than killed", function()
+        -- A non-lethal takedown leaves a body that vanilla F empties without
+        -- complaint. The mod asked only "is it dead or defeated" and walked past
+        -- it, which in play was one body in a cleared camp that refused to be
+        -- looted while everything around it worked.
+        local Scanner, world = setup()
+        world.targeting = { Stub.unconsciousNpc({ items = { Stub.item({ name = "eddies" }) } }) }
+
+        eq(#Scanner.Get(), 1)
+    end)
+
+    it("loots a robot that has been shut down", function()
+        local Scanner, world = setup()
+        world.targeting = {
+            Stub.corpse({ dead = false, turnedOff = true, items = { Stub.item({ name = "parts" }) } }),
+        }
+
+        eq(#Scanner.Get(), 1)
+    end)
+
+    it("falls back to the individual state checks when IsActive is missing", function()
+        local Scanner, world = setup()
+        world.noIsActiveApi = true
+        world.targeting = { Stub.unconsciousNpc({ items = { Stub.item({ name = "eddies" }) } }) }
+
+        eq(#Scanner.Get(), 1)
+    end)
+
+    it("leaves a puppet alone when its state cannot be read at all", function()
+        local Scanner, world = setup()
+        world.noIsActiveApi = true
+        local puppet = Stub.livingNpc({ items = { Stub.item({ name = "eddies" }) } })
+        -- Every state question throws: unreadable must mean untouched.
+        puppet.IsDead = function() error("no") end
+        puppet.IsIncapacitated = function() error("no") end
+        _G.ScriptedPuppet.IsDefeated = function() error("no") end
+        _G.ScriptedPuppet.IsUnconscious = function() error("no") end
+        _G.ScriptedPuppet.IsTurnedOff = function() error("no") end
+        world.targeting = { puppet }
+
+        eq(#Scanner.Get(), 0)
+    end)
+
     it("never empties a living NPC", function()
         local Scanner, world = setup()
         world.targeting = { Stub.livingNpc({ items = { Stub.item({ name = "eddies" }) } }) }

@@ -441,6 +441,57 @@ local function inspect(holder)
     return lootable, skipped
 end
 
+-- "Down" as the game itself defines it.
+--
+-- ScriptedPuppet.IsActive (scriptedPuppet.script:1939) is the engine's own answer,
+-- and it is the negation of five separate conditions:
+--     alive AND not defeated AND not unconscious AND not turned off AND not incapacitated
+-- This mod used to ask only `IsDead() or IsDefeated()`, which quietly excluded
+-- three of them. A knocked-out enemy - any non-lethal takedown - is perfectly
+-- lootable in the game and was invisible to the sweep, as was a disabled robot.
+-- The corpse query even asks the targeting system for unconscious puppets by
+-- name, so the scan found those bodies and this filter then threw them away.
+--
+-- Unreadable means "leave alone": a missed pickup is a nuisance, emptying a
+-- living NPC is not.
+local function isDownedPuppet(obj)
+    local ok, active = pcall(function()
+        return ScriptedPuppet.IsActive(obj)
+    end)
+
+    if ok and type(active) == "boolean" then
+        return active == false
+    end
+
+    -- Older or partial builds: ask the same question the long way round.
+    local answered = false
+
+    local checks = {
+        { "dead", function() return obj:IsDead() end },
+        { "defeated", function() return ScriptedPuppet.IsDefeated(obj) end },
+        { "unconscious", function() return ScriptedPuppet.IsUnconscious(obj) end },
+        { "turnedOff", function() return ScriptedPuppet.IsTurnedOff(obj) end },
+        { "incapacitated", function() return obj:IsIncapacitated() end },
+    }
+
+    for _, check in ipairs(checks) do
+        local readable, result = pcall(check[2])
+        if readable then
+            answered = true
+            if result == true then
+                return true
+            end
+        end
+    end
+
+    if not answered then
+        Log.DebugThrottled("scan.puppetstate", 30.0,
+            "cannot tell whether a puppet is down; leaving it alone")
+    end
+
+    return false
+end
+
 local function isLootCandidate(obj)
     if obj == nil then
         return false
@@ -451,12 +502,9 @@ local function isLootCandidate(obj)
         return false
     end
 
-    -- Creatures: corpses only. A living NPC must never be emptied.
+    -- Creatures: only ones that are down. A living NPC must never be emptied.
     if isA(obj, "ScriptedPuppet") then
-        local ok, dead = pcall(function()
-            return obj:IsDead() or ScriptedPuppet.IsDefeated(obj)
-        end)
-        return ok and dead == true
+        return isDownedPuppet(obj)
     end
 
     -- Known loot classes. gameLootContainerBase covers gameContainerObjectBase and,

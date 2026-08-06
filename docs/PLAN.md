@@ -200,6 +200,14 @@ in the general query only shows up in combat. See RESEARCH §9.
 A fourth source over `MappinSystem:GetMappins` was implemented and then deleted: on
 game 2.x it returns records with no entity handle.
 
+A puppet counts as lootable when the game says it is not active:
+`ScriptedPuppet.IsActive` (scriptedPuppet.script:1939) is the negation of alive AND not
+defeated AND not unconscious AND not turned off AND not incapacitated. Asking only
+"dead or defeated", as the first version did, silently excluded knocked-out enemies and
+disabled robots — bodies vanilla `F` empties without complaint, and which the corpse query
+explicitly asks the targeting system for. An unreadable state means the puppet is left
+alone.
+
 Candidate filtering rejects the player, vehicles and living NPCs outright, accepts corpses
 and the known loot classes (`gameItemDropObject`, `gameLootBag`, `gameLootContainerBase`
 and everything deriving from it), and then falls back to a simple question for anything
