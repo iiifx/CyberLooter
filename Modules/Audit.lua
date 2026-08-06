@@ -43,8 +43,11 @@ local function weightOf(itemData)
         return weight
     end
 
+    -- GetStatValueByType, not GetStatValueCurrent: the latter does not exist on
+    -- gameItemData, so this fallback silently never ran. The game reads weight
+    -- exactly this way (minimalItemTooltipData.script:178).
     local viaStat, stat = pcall(function()
-        return itemData:GetStatValueCurrent(gamedataStatType.Weight)
+        return itemData:GetStatValueByType(gamedataStatType.Weight)
     end)
     if viaStat and type(stat) == "number" then
         return stat
@@ -110,12 +113,22 @@ end
 
 -- An equipped item is in the list like everything else, and deleting the weapon
 -- in the player's hands would be its own kind of accident.
+--
+-- The call is HasItemInAnySlot. There is no IsSlotted on the transaction system -
+-- the first version invented one, so the pcall failed on every item and this
+-- guard silently answered "nothing is equipped" for its entire life.
 local function isEquipped(player, itemData)
     local ok, slotted = pcall(function()
-        return Game.GetTransactionSystem():IsSlotted(player, itemData:GetID())
+        return Game.GetTransactionSystem():HasItemInAnySlot(player, itemData:GetID())
     end)
 
-    return ok and slotted == true
+    if not ok then
+        -- Cannot tell: assume it is equipped rather than delete it.
+        Log.DebugThrottled("audit.slot", 30.0, "slot check unavailable: " .. tostring(slotted))
+        return true
+    end
+
+    return slotted == true
 end
 
 -- The shared walk over the player's inventory. Returns a list of plain tables so

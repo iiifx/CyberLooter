@@ -171,6 +171,19 @@ describe("Audit.FindStuckItems", function()
         eq(#world.player.__items, 2)
     end)
 
+    it("keeps everything when it cannot tell what is equipped", function()
+        -- The slot check used to call a function that does not exist, so it
+        -- failed on every item and answered "nothing is equipped" for its whole
+        -- life. If it ever cannot answer again, nothing gets deleted.
+        local Audit, world = setup()
+        world.noSlotApi = true
+        world.player.__items = { Stub.vehicleWeapon({}) }
+
+        eq(#Audit.FindStuckItems(), 0)
+        eq(Audit.RemoveStuckItems(), 0)
+        eq(#world.player.__items, 1)
+    end)
+
     it("never counts the weapon in the player's hands", function()
         local Audit, world = setup()
         world.player.__items = { Stub.heavyWeapon({ weight = 11.0, equipped = true }) }

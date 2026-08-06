@@ -415,6 +415,44 @@ question.
 
 ---
 
+## 14. Verified API signatures
+
+Checked against the RTTI dump in `Bradenm1/Cyberpunk2077-Inspector` (`Dumps/*.lua`), which
+lists the native functions of each class, and against the decompiled scripts for anything
+script-defined. Three of the mod's calls were wrong, and all three failed silently because
+every game call here is wrapped in `pcall`.
+
+| Call | Verdict |
+|---|---|
+| `TransferAllItems(source, target) -> Bool` | correct |
+| `TransferItem(source, target, itemID, amount) -> Bool` | correct |
+| `RemoveItem(obj, itemID, amount) -> Bool` | correct |
+| `GetItemList(obj) -> Bool, array<gameItemData>` | correct |
+| `GetTotalItemQuantity(obj) -> Int32` | correct |
+| `IsSlotted(obj, itemID)` | **does not exist** — the call is `HasItemInAnySlot(obj, itemID) -> Bool` |
+| `gameItemData:GetStatValueCurrent(stat)` | **does not exist** — the call is `GetStatValueByType(stat) -> Float` (minimalItemTooltipData.script:178) |
+| `RPGManager.GetItemWeight(itemData) -> Float` | correct, script-defined (rpgManager.script:1385) |
+| `RPGManager.GetItemRecord(itemID) -> Item_Record` | correct, script-defined (rpgManager.script:2874) |
+| `ScriptedPuppet.IsActive(obj)` | correct as a script static (:1939); `obj:IsActive()` also exists natively |
+
+The lesson is about the `pcall` wrapper rather than about the two typos. Wrapping every game
+call means a misspelled function is indistinguishable from a function that answered "no",
+so a guard can be dead for its entire life while reporting that it works. Both defects above
+were of exactly that kind: the equipped-item guard on a destructive button, and the fallback
+path for reading item weight. Any probe that cannot answer must now say so and fail toward
+the safe side, not quietly return `false`.
+
+### TSFMV bit values
+
+`TSFMV` (targetingSearchFilter.script:13-33) has no explicit values, so the mask arithmetic
+rests on the members being powers of two. They are: the game's own code writes
+`TSFMV.Obj_Puppet | TSFMV.St_Alive` (:73), which is meaningless for ordinals. Index order
+gives `Obj_Puppet` = 2, `St_Dead` = 2048, `St_Defeated` = 8192, `St_Unconscious` = 32768,
+`St_TurnedOff` = 131072 — the last of which the corpse query was missing, so shut-down
+robots were never asked for.
+
+---
+
 ## Risk summary
 
 | Risk | Assessment | Mitigation |

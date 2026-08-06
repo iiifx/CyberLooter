@@ -54,7 +54,7 @@ function Stub.item(spec)
         return self.__quantity
     end
 
-    function item:GetStatValueCurrent(stat)
+    function item:GetStatValueByType(stat)
         if self.__weight == nil then
             error("no such stat")
         end
@@ -343,7 +343,7 @@ function Stub.install()
         return false
     end
 
-    function transactionSystem:IsSlotted(holder, itemID)
+    function transactionSystem:HasItemInAnySlot(holder, itemID)
         if world.noSlotApi then
             error("IsSlotted is unavailable on this build")
         end

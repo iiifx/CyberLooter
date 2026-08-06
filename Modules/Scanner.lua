@@ -455,12 +455,17 @@ end
 -- Unreadable means "leave alone": a missed pickup is a nuisance, emptying a
 -- living NPC is not.
 local function isDownedPuppet(obj)
-    local ok, active = pcall(function()
-        return ScriptedPuppet.IsActive(obj)
-    end)
-
-    if ok and type(active) == "boolean" then
-        return active == false
+    -- The instance method is the native one and is listed in the RTTI dump; the
+    -- static is a script function of the same name. Either answers, so both are
+    -- tried before falling back to the five conditions individually.
+    for _, ask in ipairs({
+        function() return obj:IsActive() end,
+        function() return ScriptedPuppet.IsActive(obj) end,
+    }) do
+        local ok, active = pcall(ask)
+        if ok and type(active) == "boolean" then
+            return active == false
+        end
     end
 
     -- Older or partial builds: ask the same question the long way round.
@@ -595,13 +600,19 @@ end
 -- Source B: targeting query aimed specifically at bodies
 --------------------------------------------------------------------------------
 
--- TSFMV is a bitfield: the mask bit is 1 << enum value.
---   Obj_Puppet = 1  -> 2
---   St_Dead = 11    -> 2048
---   St_Defeated = 13 -> 8192
---   St_Unconscious = 15 -> 32768
+-- TSFMV is a bitfield, verified against its declaration order in
+-- targetingSearchFilter.script:13-33. That the members are powers of two rather
+-- than plain ordinals is not an assumption either: the game's own code ORs them
+-- together (`TSFMV.Obj_Puppet | TSFMV.St_Alive`, :73), which only means anything
+-- if each member owns a bit.
+--
+--   Obj_Puppet      index 1  -> 2
+--   St_Dead         index 11 -> 2048
+--   St_Defeated     index 13 -> 8192
+--   St_Unconscious  index 15 -> 32768
+--   St_TurnedOff    index 17 -> 131072
 local MASK_PUPPET = 2
-local MASK_NOT_ALIVE = 2048 + 8192 + 32768
+local MASK_NOT_ALIVE = 2048 + 8192 + 32768 + 131072
 
 -- The general query drops enemies the moment they die, which left corpses from a
 -- just-finished fight unreachable until a reload. This one asks for exactly the
