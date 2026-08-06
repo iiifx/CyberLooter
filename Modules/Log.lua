@@ -49,6 +49,25 @@ function Log.Info(message)
     print(PREFIX .. message)
 end
 
+-- Same message class at most once per `seconds`, at INFO level. Automatic looting
+-- sweeps twice a second by default, and one line of file I/O plus a console print
+-- per sweep is continuous disk churn in a loot-dense area.
+function Log.InfoThrottled(key, seconds, message)
+    local clockOk, now = pcall(os.clock)
+    if not clockOk or now == nil then
+        Log.Info(message)
+        return
+    end
+
+    local last = _throttled[key]
+    if last ~= nil and (now - last) < seconds then
+        return
+    end
+
+    _throttled[key] = now
+    Log.Info(message)
+end
+
 function Log.Warn(message)
     write("WARN", message)
     print(PREFIX .. "WARN: " .. message)

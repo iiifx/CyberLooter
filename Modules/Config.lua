@@ -34,6 +34,16 @@ local DEFAULTS = {
     debugLog = false,
 }
 
+-- The same bounds the sliders enforce, applied to the file as well.
+local LIMITS = {
+    radius = { 2.0, 25.0 },
+    holdTime = { 0.1, 1.5 },
+    maxObjectsPerSweep = { 4, 100 },
+    autoLootInterval = { 0.1, 3.0 },
+    indicatorOffsetX = { -800.0, 800.0 },
+    indicatorOffsetY = { -600.0, 600.0 },
+}
+
 Config.values = {}
 Config.isOverlayOpen = false
 Config.cleanupArmed = false
@@ -90,10 +100,21 @@ function Config.Load()
         return
     end
 
-    -- Only accept keys we know about, with the type the default declares.
+    -- Only accept keys we know about, with the type the default declares and inside
+    -- the range the UI allows. config.json is hand-editable, and a radius of 500
+    -- or a hold time of -1 is not a preference, it is a broken mod.
     for key, defaultValue in pairs(DEFAULTS) do
         local value = decoded[key]
         if value ~= nil and type(value) == type(defaultValue) then
+            local limit = LIMITS[key]
+            if limit ~= nil and type(value) == "number" then
+                if value < limit[1] or value > limit[2] then
+                    Log.Warn(string.format("%s = %s is out of range (%s..%s), using %s",
+                        key, tostring(value), tostring(limit[1]), tostring(limit[2]),
+                        tostring(defaultValue)))
+                    value = defaultValue
+                end
+            end
             Config.values[key] = value
         end
     end

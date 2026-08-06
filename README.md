@@ -18,7 +18,9 @@ other mods. Installing CyberLooter itself is copying one folder.
 - Hold your chosen key briefly (0.35 s by default) — every lootable object within the
   radius (5 m by default) is emptied into your inventory in one go. Release the key
   immediately; there is nothing to keep holding.
-- Works on corpses, containers, stashes and items lying on the ground. Aiming at them is
+- Works on corpses, containers and items lying on the ground. Devices are never touched —
+  your apartment stash, wardrobes, drop points and vending machines all hold items and all
+  stay untouched — and neither are locked containers. Aiming at them is
   not required — the search is by distance, not by line of sight.
 - Picks up everything the game allows, junk and broken weapons included. Quest loot is
   skipped by default — but per item, not per body: a corpse carrying a quest item still
@@ -303,6 +305,24 @@ assumes — that is what the log from a real session is for, and it is why the l
 as a first-class feature rather than an afterthought.
 
 The `tests/` folder is inert inside the game: Cyber Engine Tweaks only loads `init.lua`.
+
+## Known limits
+
+Stated plainly, because a quality-of-life mod that quietly breaks a quest is worse than no
+mod at all.
+
+- **Quest protection is not complete.** Items the game flags as quest loot are left alone,
+  and so are scripted quest objects. But some pickups that scripts depend on carry no quest
+  flag at all: the published Autoloot mod keeps a hardcoded list of about seventeen world
+  positions for exactly those. This mod has no such list. If a quest expects you to pick
+  something up in a specific place, prefer to do it by hand.
+- **It loots through walls.** The search is by distance with no line-of-sight test, which is
+  the point — aiming is what this mod exists to avoid — but it does mean loot in the next
+  room comes along.
+- **No gating for cutscenes, dialogue or braindance.** Automatic looting keeps running
+  during scripted scenes.
+- **Shards are transferred, not read.** The vanilla pickup also runs a read action; this one
+  does not, so a shard arrives unread.
 
 ## Compatibility
 

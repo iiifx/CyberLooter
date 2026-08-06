@@ -100,6 +100,18 @@ describe("Scanner.IsRestrictedItem", function()
         isFalse(Scanner.restrictedCheckAnswered)
     end)
 
+    it("does not cache a verdict that no probe could answer", function()
+        -- One transient API failure must not whitelist an item type for the rest
+        -- of the session.
+        local Scanner = setup()
+        local broken = Stub.item({ name = "Items.flaky", recordMissing = true, brokenTags = true })
+        isFalse(Scanner.IsRestrictedItem(broken))
+
+        -- Same record path, now answerable and genuinely restricted.
+        local working = Stub.heavyWeapon({ name = "Items.flaky", tags = {} })
+        isTrue(Scanner.IsRestrictedItem(working), "the shrug must not have been cached")
+    end)
+
     it("reports the filter as working once any item has been judged", function()
         local Scanner = setup()
         Scanner.IsRestrictedItem(Stub.item({ name = "pistol", equipArea = "EquipmentArea.Weapon" }))
@@ -241,6 +253,48 @@ describe("Scanner.Get", function()
 
         local objects = Scanner.Get()
         eq(#objects, 1, "the visual object holds nothing; the drop is the holder")
+    end)
+
+    it("never empties the player's own stash", function()
+        -- Stash extends InteractiveDevice and has a real inventory, so the
+        -- "does it hold items" fallback would have taken the lot: hundreds of
+        -- items into a 200 unit backpack, with no way to put them back.
+        local Scanner, world = setup()
+        world.targeting = { Stub.stash({ items = {
+            Stub.item({ name = "stored_rifle" }), Stub.item({ name = "stored_shard" }) } }) }
+
+        eq(#Scanner.Get(), 0)
+    end)
+
+    it("leaves every other device alone as well", function()
+        local Scanner, world = setup()
+        for _, class in ipairs({ "Wardrobe", "DropPoint", "VendingMachine", "Computer", "AccessPoint" }) do
+            world.targeting = { Stub.entity({
+                class = class,
+                parents = { InteractiveDevice = true, Device = true, gameObject = true },
+                items = { Stub.item({ name = "contents_" .. class }) },
+            }) }
+            Scanner.Invalidate()
+            eq(#Scanner.Get(), 0, class .. " must not be looted")
+        end
+    end)
+
+    it("recognises a device even when only its own class name is known", function()
+        local Scanner, world = setup()
+        world.targeting = { Stub.entity({
+            class = "Stash",
+            parents = { gameObject = true },
+            items = { Stub.item({ name = "stored" }) },
+        }) }
+
+        eq(#Scanner.Get(), 0)
+    end)
+
+    it("leaves locked containers locked", function()
+        local Scanner, world = setup()
+        world.targeting = { Stub.container({ locked = true, items = { Stub.item({ name = "prize" }) } }) }
+
+        eq(#Scanner.Get(), 0)
     end)
 
     it("counts an object once when several sources return it", function()

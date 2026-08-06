@@ -18,7 +18,7 @@ local Auto = require("Modules/Auto.lua")
 local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.4.4",
+    version = "0.5.0",
     ready = false,
 }
 

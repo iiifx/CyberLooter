@@ -453,6 +453,44 @@ robots were never asked for.
 
 ---
 
+## 15. How a published mod solves the same problem
+
+Reference: **Autoloot** by keanuWheeze (mirror `raikoug/Cyberpunk-Mod---Autoloot`), `modules/logic.lua`.
+It is the closest shipped equivalent and has years of bug reports behind it. Two structural
+differences are worth stating plainly.
+
+**It never calls `TransferAllItems`.** Every item goes through a per-item transfer, so every
+item passes a filter. CyberLooter uses the bulk call as its primary path and only falls back
+to per-item when something in the object must be left behind. The bulk call is what the game
+itself runs on a corpse, which is why it is kept — but it means a filter mistake is a filter
+that never runs, not a filter that lets one item through.
+
+**It blacklists device classes rather than accepting anything with an inventory.**
+`modules/logic.lua:679-742` excludes about sixty classes by name — `Stash`, `Wardrobe`,
+`DropPoint`, `VendingMachine`, `AccessPoint`, `Computer`, turrets, screens, doors. This mod
+took the opposite approach ("does it hold items?") after a class whitelist proved too narrow,
+and that inversion was one step away from emptying the player's apartment stash into their
+backpack: `Stash extends InteractiveDevice extends Device` (stash.script:39) with a real
+inventory component. Devices are now rejected by base class, with a name list behind it.
+
+Other protections it has that this mod does not, listed honestly rather than adopted
+wholesale:
+
+| Autoloot | Here |
+|---|---|
+| `testedSet = Visible` + frustum + LOS raycast (logic.lua:598-677) | `Complete` — loots through walls, kept deliberately: aiming is exactly what this mod exists to avoid |
+| `gameObj:IsLocked(player)` (logic.lua:816) | now checked too |
+| ~17 hardcoded world coordinates of quest-breaking pickups (logic.lua:76-94) | not present |
+| Keycard and iconic-weapon protection (logic.lua:814, 823-842) | not present |
+| Quest-phase and workspot/dialog/braindance blocklist (logic.lua:1094-1171) | not present |
+| Loots an NPC only if dead, defeated, or it has a killer (logic.lua:771-779) | any inactive puppet |
+
+The coordinate list is the telling one: those items are not `IsQuest()`-flagged, which is
+precisely why a hardcoded list exists. Any mod relying on `IsQuest()` alone — this one — can
+break those quests.
+
+---
+
 ## Risk summary
 
 | Risk | Assessment | Mitigation |

@@ -203,8 +203,17 @@ function Looter.Sweep()
     end
 
     Looter.lastSweep = string.format("%d/%d objects, ~%d stacks", succeeded, attempted, stacks)
-    Log.Info(string.format("sweep: %d/%d objects, ~%d stacks [%s]",
-        succeeded, attempted, stacks, table.concat(detail, " ")))
+
+    local line = string.format("sweep: %d/%d objects, ~%d stacks [%s]",
+        succeeded, attempted, stacks, table.concat(detail, " "))
+
+    -- A sweep that failed is always worth a line; a healthy one during automatic
+    -- looting is not worth one twice a second.
+    if succeeded < attempted then
+        Log.Info(line)
+    else
+        Log.InfoThrottled("sweep.ok", 5.0, line)
+    end
 
     Scanner.Invalidate()
 

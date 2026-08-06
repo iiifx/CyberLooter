@@ -326,8 +326,13 @@ function Audit.RemoveStuckItems()
     local removedWeight = 0.0
 
     for _, row in ipairs(stuck) do
+        -- RemoveItem answers Bool (transactionSystem.script:16); a refusal that
+        -- did not throw is still a refusal.
         local ok, err = pcall(function()
-            Game.GetTransactionSystem():RemoveItem(player, row.item:GetID(), row.quantity)
+            local removed = Game.GetTransactionSystem():RemoveItem(player, row.item:GetID(), row.quantity)
+            if removed == false then
+                error("the game refused the removal", 0)
+            end
         end)
 
         if ok then

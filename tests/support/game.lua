@@ -167,6 +167,13 @@ function Stub.entity(spec)
         return self.__owner
     end
 
+    function entity:IsLocked()
+        if spec.lockUnreadable then
+            error("IsLocked is unavailable on this object")
+        end
+        return spec.locked == true
+    end
+
     -- Only the player has one; the stub hands back the world's flag.
     function entity:GetPlayerStateMachineBlackboard()
         return spec.psmBlackboard
@@ -202,6 +209,15 @@ function Stub.unconsciousNpc(spec)
     spec.parents = spec.parents or { ScriptedPuppet = true, gameObject = true }
     spec.dead = false
     spec.unconscious = true
+    return Stub.entity(spec)
+end
+
+-- The player's own stash: a device with a real inventory, and the single most
+-- dangerous thing the sweep could mistake for loot.
+function Stub.stash(spec)
+    spec = spec or {}
+    spec.class = spec.class or "Stash"
+    spec.parents = spec.parents or { InteractiveDevice = true, Device = true, gameObject = true }
     return Stub.entity(spec)
 end
 
@@ -701,6 +717,10 @@ function Stub.log()
 
     log.DebugThrottled = function(_, _, message)
         log.lines[#log.lines + 1] = "DEBUG " .. tostring(message)
+    end
+
+    log.InfoThrottled = function(_, _, message)
+        log.lines[#log.lines + 1] = "INFO " .. tostring(message)
     end
 
     log.IsEnabled = function()

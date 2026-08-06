@@ -104,9 +104,10 @@ local RESTRICTED_TAG = "DiscardOnEmpty"
 -- are hidden from the backpack because they have their own counters, not because
 -- they should be left on the ground.
 local HIDDEN_ITEM_TAGS = {
-    "HideInUI",     -- the general marker for "not a player-facing item"
-    "TppHead",      -- the third-person head, an internal entity item
-    "base_fists",   -- the player's fists as an item
+    "HideInUI",        -- the general marker for "not a player-facing item"
+    "TppHead",         -- the third-person head, an internal entity item
+    "base_fists",      -- the player's fists as an item
+    "SoftwareShsard",  -- CDPR's own typo, shipped; spelled exactly like this
 }
 
 -- HideInBackpackUI is deliberately absent from that list, and this is the
@@ -378,9 +379,17 @@ function Scanner.IsRestrictedItem(itemData)
         return _verdictByPath[path]
     end
 
+    local answeredBefore = Scanner.restrictedCheckAnswered
     local verdict = judge(itemData, path)
 
-    if path ~= nil then
+    -- A "not restricted" reached because every probe errored is not a verdict, it
+    -- is a shrug, and caching it would whitelist that item type for the rest of
+    -- the session on the strength of one transient failure.
+    local answered = verdict == true
+        or Scanner.restrictedCheckAnswered == true
+        or answeredBefore == true
+
+    if path ~= nil and answered then
         _verdictByPath[path] = verdict
     end
 
@@ -497,6 +506,40 @@ local function isDownedPuppet(obj)
     return false
 end
 
+-- Anything deriving from Device: terminals, screens, turrets, vending machines,
+-- and - the reason this list exists at all - the player's own stash.
+local DEVICE_CLASSES = { "gameDeviceBase", "DeviceBase", "Device", "InteractiveDevice" }
+
+-- Belt and braces for classes that might not resolve through the bases above.
+-- Cross-checked against the exclusion list the published Autoloot mod maintains
+-- (keanuWheeze/Autoloot, modules/logic.lua:679-742), which reached the same
+-- conclusion the hard way.
+local NEVER_LOOT_CLASSES = {
+    "Stash",
+    "InvisibleSceneStash",
+    "Wardrobe",
+    "DropPoint",
+    "VendingMachine",
+    "WeaponVendingMachine",
+    "AccessPoint",
+    "Computer",
+    "Terminal",
+    "DataTerm",
+    "ArcadeMachine",
+    "Jukebox",
+    "SecurityTurret",
+}
+
+-- A locked container is locked for a reason - a quest, a shard, a skill check.
+-- The mod reaches past the interaction system, so nothing else would stop it.
+local function isLocked(obj)
+    local ok, locked = pcall(function()
+        return obj:IsLocked(State.GetPlayer())
+    end)
+
+    return ok and locked == true
+end
+
 local function isLootCandidate(obj)
     if obj == nil then
         return false
@@ -512,6 +555,10 @@ local function isLootCandidate(obj)
         return isDownedPuppet(obj)
     end
 
+    if isLocked(obj) then
+        return false
+    end
+
     -- Known loot classes. gameLootContainerBase covers gameContainerObjectBase and,
     -- through it, gameContainerObjectSingleItem; gameLootBag derives straight from
     -- gameObject and needs its own check.
@@ -521,11 +568,30 @@ local function isLootCandidate(obj)
         return true
     end
 
+    -- Devices are never loot, however much they hold. This is the guard that was
+    -- missing: the player's own apartment stash is `Stash extends InteractiveDevice
+    -- extends Device` (stash.script:39) with a real inventory component, so the
+    -- "does it hold items" test below would have accepted it and the sweep would
+    -- have emptied the entire stash into the backpack, hundreds of items over the
+    -- carry limit, with no way to put them back in bulk. The same goes for
+    -- wardrobes, drop points and vending machines.
+    for _, className in ipairs(DEVICE_CLASSES) do
+        if isA(obj, className) then
+            return false
+        end
+    end
+
+    for _, className in ipairs(NEVER_LOOT_CLASSES) do
+        if isA(obj, className) then
+            return false
+        end
+    end
+
     -- Everything else is judged by whether it actually holds items the mod is
     -- allowed to take. A class whitelist turned out to be the wrong instinct:
     -- items on tables, shelves and inside furniture arrive as classes not worth
     -- enumerating, and were being discarded in silence. The inventory is the
-    -- honest test.
+    -- honest test - but only once the classes above have been ruled out.
     local lootable = inspect(obj)
     return lootable > 0
 end
