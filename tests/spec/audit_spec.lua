@@ -157,6 +157,20 @@ describe("Audit.FindStuckItems", function()
         eq(weight, 34.0)
     end)
 
+    it("never counts installed cyberware, whatever it is tagged with", function()
+        local Audit, world = setup()
+        world.player.__items = {
+            Stub.item({ name = "Items.AdvancedBioConductorsUncommon",
+                equipArea = "EquipmentArea.FrontalCortexCW", tags = { "HideInBackpackUI" } }),
+            Stub.item({ name = "Items.AdvancedSmartLinkUncommonPlus",
+                equipArea = "EquipmentArea.HandsCW" }),
+        }
+
+        eq(#Audit.FindStuckItems(), 0)
+        eq(Audit.RemoveStuckItems(), 0)
+        eq(#world.player.__items, 2)
+    end)
+
     it("never counts the weapon in the player's hands", function()
         local Audit, world = setup()
         world.player.__items = { Stub.heavyWeapon({ weight = 11.0, equipped = true }) }

@@ -164,6 +164,24 @@ A sweep that collects nothing despite a non-empty scan pauses the loop for three
 Without that, an object that cannot be emptied is retried twice a second for as long as the
 player stands near it.
 
+### Audit.lua
+
+Reads the player's inventory through the transaction system rather than the backpack UI,
+because the UI is a view and hides whole families of item. The dump reports name, weight,
+stack size, equip area, item type, category and tags, heaviest first.
+
+The cleanup uses `Scanner.IsStuckInInventory`, which is **not** the pickup filter and must
+never become it. The pickup filter answers "is this worth taking" and errs toward taking
+less; the cleanup answers "may this be destroyed" and must err toward destroying nothing. It
+recognises only hand-carried weapons and `Items.Vehicle_` hardware, and refuses cyberware,
+quest items and anything unclassifiable — refusing on an unreadable answer rather than
+proceeding.
+
+That separation is not theoretical. The first version reused the pickup filter, which had
+just been taught that `HideInBackpackUI` marks junk. Installed cyberware carries that tag,
+because cyberware belongs on the cyberware screen and not in the backpack, so the button
+deleted every implant in the player's body.
+
 ### Scanner.lua
 
 Three sources run on every scan and their results are merged, deduplicated by entity id.

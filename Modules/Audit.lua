@@ -161,7 +161,9 @@ local function survey(classified)
             itemType = facts.itemType,
             category = facts.category,
             tags = facts.tags,
-            restricted = Scanner.IsRestrictedItem(itemData) == true,
+            -- Deliberately the narrow test, not the loot filter: this flag is
+            -- what the delete button acts on.
+            restricted = Scanner.IsStuckInInventory(itemData) == true,
             equipped = isEquipped(player, itemData),
         }
     end

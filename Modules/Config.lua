@@ -244,6 +244,8 @@ function Config.DrawWindow(status)
             ImGui.TextColored(1.0, 0.6, 0.2, 1.0, string.format(
                 "%d stuck entries, %.1f weight - invisible in the backpack and not droppable.",
                 #stuck, weight))
+            ImGui.Text("Only hand-carried and vehicle weapons are ever listed here.")
+            ImGui.Text("Save the game first: deletion cannot be undone.")
 
             -- Named in full: deletion is irreversible, so the list is on screen
             -- before the second click, not only in the log afterwards.

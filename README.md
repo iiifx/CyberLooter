@@ -235,8 +235,11 @@ is a view, not the inventory — an item it has no place for is simply not drawn
 weight still counts against the carry limit — so this is the way to find out what is really
 in there. It reads the inventory and changes nothing in it.
 
-**Remove stuck items** deletes what should never have reached the backpack: vehicle-mounted
-weapons and hand-carried heavy weapons. Neither can be seen in the inventory, equipped, sold
+**Remove stuck items** deletes what should never have reached the backpack, and nothing
+else: vehicle-mounted weapons and hand-carried heavy weapons, the only two families ever
+observed to get stuck. It does not reuse the pickup filter — declining to pick something up
+costs a pickup, deleting it is irreversible — and it refuses outright to touch cyberware,
+quest items or anything it cannot classify. Save the game before using it anyway. Neither can be seen in the inventory, equipped, sold
 or dropped, and both cost carry weight — one session ended 183 kg over the limit on sixteen
 of them. The button lists what it found and asks a second time before deleting anything, and
 never touches whatever the player currently has equipped. Everything removed is named in the

@@ -101,11 +101,20 @@ local RESTRICTED_TAG = "DiscardOnEmpty"
 -- are hidden from the backpack because they have their own counters, not because
 -- they should be left on the ground.
 local HIDDEN_ITEM_TAGS = {
-    "HideInUI",          -- the general marker for "not a player-facing item"
-    "HideInBackpackUI",  -- shown in some screens, never in the backpack
-    "TppHead",           -- the third-person head, an internal entity item
-    "base_fists",        -- the player's fists as an item
+    "HideInUI",     -- the general marker for "not a player-facing item"
+    "TppHead",      -- the third-person head, an internal entity item
+    "base_fists",   -- the player's fists as an item
 }
+
+-- HideInBackpackUI is deliberately absent from that list, and this is the
+-- expensive lesson of the whole filter. It does not mean "not a real item"; it
+-- means "this screen is not where this item lives". Installed cyberware carries
+-- it, because cyberware belongs on the cyberware screen rather than in the
+-- backpack. Treating it as a marker of junk classified every implant in the
+-- player's body as garbage, and the cleanup tool then deleted them.
+--
+-- Only the tags on the list above mean an item is invisible everywhere, and only
+-- that is a reason to leave it on the ground.
 
 -- Hardware that belongs to a vehicle rather than to a person. The game gives
 -- these the ordinary Weapon equip area, so nothing about their record marks them
@@ -287,6 +296,72 @@ local function judge(itemData, path)
     end
 
     return false
+end
+
+-- A far narrower question than IsRestrictedItem, and it must stay that way.
+--
+-- "Do not pick this up" is a judgement about loot: getting it wrong costs the
+-- player a pickup. "Delete this from the inventory" is destructive, and getting
+-- it wrong costs them their character. So the cleanup tool does not reuse the
+-- loot filter. It only recognises the two families actually observed to get
+-- stuck - hand-carried weapons and vehicle hardware - and refuses outright to
+-- touch anything that could be a legitimate possession.
+--
+-- The first version of this did reuse the loot filter, and deleted every implant
+-- in the player's body.
+function Scanner.IsStuckInInventory(itemData)
+    if itemData == nil then
+        return false
+    end
+
+    -- Cyberware is never junk, whatever else is true of it.
+    local cyberware = probe("stuck.cyberware", function()
+        local record = RPGManager.GetItemRecord(itemData:GetID())
+        if record == nil then
+            return false
+        end
+
+        local area = record:EquipArea()
+        if area == nil then
+            return false
+        end
+
+        -- Every cyberware area ends in CW: FrontalCortexCW, HandsCW, LegsCW...
+        return tostring(area:Type()):match("CW%s*%(?%d*%)?$") ~= nil
+    end)
+    if cyberware ~= false then
+        -- Unreadable counts as cyberware here: when in doubt, keep it.
+        return false
+    end
+
+    -- Quest items are never the mod's business.
+    local quest = probe("stuck.quest", function()
+        return itemData:HasTag(CName.new("Quest"))
+    end)
+    if quest ~= false then
+        return false
+    end
+
+    local path = Scanner.ItemPath(itemData)
+    if path ~= nil then
+        for _, pattern in ipairs(RESTRICTED_NAME_PATTERNS) do
+            if path:match(pattern) then
+                return true
+            end
+        end
+    end
+
+    local heavy = probe("stuck.heavy", function()
+        local record = RPGManager.GetItemRecord(itemData:GetID())
+        if record == nil then
+            return false
+        end
+
+        local area = record:EquipArea()
+        return area ~= nil and sameEnum(area:Type(), enumMember(gamedataEquipmentArea, "WeaponHeavy"))
+    end)
+
+    return heavy == true
 end
 
 function Scanner.IsRestrictedItem(itemData)

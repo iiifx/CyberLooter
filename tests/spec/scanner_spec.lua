@@ -59,10 +59,22 @@ describe("Scanner.IsRestrictedItem", function()
         -- these never enters the player's item map at all, so it cannot be seen,
         -- equipped, sold or dropped - only carried.
         local Scanner = setup()
-        for _, tag in ipairs({ "HideInUI", "HideInBackpackUI", "TppHead", "base_fists" }) do
+        for _, tag in ipairs({ "HideInUI", "TppHead", "base_fists" }) do
             isTrue(Scanner.IsRestrictedItem(Stub.item({ name = "hidden_" .. tag, tags = { tag } })),
                 tag .. " should be refused")
         end
+    end)
+
+    it("still takes cyberware, which is hidden from the backpack but not from the game", function()
+        -- HideInBackpackUI means "this screen is not where this item lives", not
+        -- "this item is junk". Reading it as junk classified every implant in the
+        -- player's body as garbage and the cleanup tool deleted them.
+        local Scanner = setup()
+        isFalse(Scanner.IsRestrictedItem(Stub.item({
+            name = "Items.AdvancedBioConductorsUncommon",
+            tags = { "HideInBackpackUI" },
+            equipArea = "EquipmentArea.FrontalCortexCW",
+        })))
     end)
 
     it("still takes money and ammo, which are hidden for a different reason", function()
@@ -92,6 +104,61 @@ describe("Scanner.IsRestrictedItem", function()
         local Scanner = setup()
         Scanner.IsRestrictedItem(Stub.item({ name = "pistol", equipArea = "EquipmentArea.Weapon" }))
         isTrue(Scanner.restrictedCheckAnswered)
+    end)
+end)
+
+describe("Scanner.IsStuckInInventory", function()
+    -- This one decides what a destructive button deletes, so its job is to say
+    -- no. Everything it is unsure about stays in the inventory.
+
+    it("recognises a hand-carried weapon that ended up in the backpack", function()
+        local Scanner = setup()
+        isTrue(Scanner.IsStuckInInventory(Stub.heavyWeapon({})))
+    end)
+
+    it("recognises a vehicle weapon", function()
+        local Scanner = setup()
+        isTrue(Scanner.IsStuckInInventory(Stub.vehicleWeapon({})))
+    end)
+
+    it("never touches cyberware", function()
+        local Scanner = setup()
+        for _, area in ipairs({ "FrontalCortexCW", "HandsCW", "LegsCW", "SystemReplacementCW" }) do
+            isFalse(Scanner.IsStuckInInventory(Stub.item({
+                name = "implant_" .. area,
+                equipArea = "EquipmentArea." .. area,
+                tags = { "HideInBackpackUI" },
+            })), area .. " must survive")
+        end
+    end)
+
+    it("never touches quest items", function()
+        local Scanner = setup()
+        isFalse(Scanner.IsStuckInInventory(Stub.item({ name = "evidence", quest = true })))
+    end)
+
+    it("never touches ordinary gear", function()
+        local Scanner = setup()
+        isFalse(Scanner.IsStuckInInventory(Stub.item({
+            name = "Items.Preset_Lexington_Default",
+            equipArea = "EquipmentArea.Weapon",
+        })))
+        isFalse(Scanner.IsStuckInInventory(Stub.item({ name = "Items.Jacket_05_old_01" })))
+    end)
+
+    it("is narrower than the loot filter, not equal to it", function()
+        -- An item the mod declines to pick up is not thereby an item worth
+        -- deleting: refusing a pickup costs nothing, deleting is irreversible.
+        local Scanner = setup()
+        local hidden = Stub.item({ name = "internal_thing", tags = { "HideInUI" } })
+        isTrue(Scanner.IsRestrictedItem(hidden))
+        isFalse(Scanner.IsStuckInInventory(hidden))
+    end)
+
+    it("keeps anything it cannot classify", function()
+        local Scanner = setup()
+        isFalse(Scanner.IsStuckInInventory(Stub.item({
+            name = "mystery", recordMissing = true, brokenTags = true })))
     end)
 end)
 

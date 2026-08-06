@@ -361,10 +361,16 @@ the player's item map, which is why one cannot be seen, equipped, sold, dropped 
 disassembled, while its weight still counts. That is precisely the failure the player hit:
 an inventory 205 units into a 200 unit limit, with nothing visible to remove.
 
-Two of the six blacklisted tags must **not** be treated as "do not loot". `Currency` and
+`HideInBackpackUI` must not be treated as "do not loot" either, and this one cost real
+damage before it was understood. It does not mean "not a real item"; it means "this screen
+is not where this item lives". Installed cyberware carries it, because cyberware is shown on
+its own screen. The mod briefly refused it, the cleanup tool inherited that judgement, and a
+player lost every implant in their body. Only `HideInUI` means invisible everywhere.
+
+Two more of the six blacklisted tags must **not** be treated as "do not loot". `Currency` and
 `Ammo` are hidden from the backpack because they have their own counters, not because they
-are unwanted. The mod therefore refuses `HideInUI`, `HideInBackpackUI`, `TppHead` and
-`base_fists`, and takes money and ammunition as before.
+are unwanted. The mod therefore refuses `HideInUI`, `TppHead` and `base_fists`, and takes money,
+ammunition and cyberware as before.
 
 ### Vehicle weapons
 
