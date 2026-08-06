@@ -29,6 +29,9 @@ local _registryCount = 0
 -- Which sources contributed to the last scan, for the settings window and log.
 Scanner.strategy = "no scan yet"
 
+-- Why nearby loot was left alone, refreshed by every scan.
+Scanner.lastSkip = { questObjects = 0, skippedStacks = 0, skippedOnlyObjects = 0 }
+
 -- Native RTTI names. Script aliases such as "ItemObject" may or may not resolve
 -- through IsA, so the native name is tried first and the alias only as a backstop.
 local CLASS_ITEM_DROP = "gameItemDropObject"
@@ -384,6 +387,33 @@ function Scanner.IsRestrictedItem(itemData)
     return verdict
 end
 
+function Scanner.IsQuestItem(itemData)
+    local ok, tagged = pcall(function()
+        return itemData:HasTag(CName.new("Quest"))
+    end)
+
+    return ok and tagged == true
+end
+
+-- Everything the sweep must leave behind, per item rather than per object.
+--
+-- Quest loot used to be handled a level up: one quest-tagged item anywhere in a
+-- corpse made the whole corpse untouchable, and since that decision was only
+-- visible in the debug log, the result looked like a single body that refused to
+-- be looted for no reason while everything around it worked. Vanilla F on the
+-- same body picks up the ordinary items happily, which is the behaviour to match.
+function Scanner.IsSkippedItem(itemData)
+    if Scanner.IsRestrictedItem(itemData) then
+        return true, "restricted"
+    end
+
+    if Config.values.skipQuestItems and Scanner.IsQuestItem(itemData) then
+        return true, "quest"
+    end
+
+    return false, nil
+end
+
 -- Counts stacks rather than units: 45 rounds of ammo is one entry, which keeps
 -- the number on the indicator readable. Restricted items are counted separately
 -- and never contribute to what the mod offers to take.
@@ -398,17 +428,17 @@ local function inspect(holder)
     end
 
     local lootable = 0
-    local restricted = 0
+    local skipped = 0
 
     for _, itemData in ipairs(list) do
-        if Scanner.IsRestrictedItem(itemData) then
-            restricted = restricted + 1
+        if Scanner.IsSkippedItem(itemData) then
+            skipped = skipped + 1
         else
             lootable = lootable + 1
         end
     end
 
-    return lootable, restricted
+    return lootable, skipped
 end
 
 local function isLootCandidate(obj)
@@ -447,35 +477,15 @@ local function isLootCandidate(obj)
     return lootable > 0
 end
 
-local function hasQuestLoot(holder)
+-- A whole object the mod must not disturb - a scripted quest container, not a
+-- container that happens to hold a quest item. The items inside are judged one
+-- by one by Scanner.IsSkippedItem.
+local function isQuestObject(holder)
     local ok, isQuest = pcall(function()
         return holder:IsQuest()
     end)
 
-    if ok and isQuest == true then
-        return true
-    end
-
-    -- Object-level flag is not available on every class, so also look at the items.
-    local listOk, list = pcall(function()
-        local _, items = Game.GetTransactionSystem():GetItemList(holder)
-        return items
-    end)
-
-    if not listOk or list == nil then
-        return false
-    end
-
-    for _, item in ipairs(list) do
-        local tagOk, tagged = pcall(function()
-            return item:HasTag("Quest")
-        end)
-        if tagOk and tagged == true then
-            return true
-        end
-    end
-
-    return false
+    return ok and isQuest == true
 end
 
 local function distanceTo(playerPos, obj)
@@ -739,6 +749,7 @@ local function collect(entities, player, radius)
     local skippedQuest = 0
     local rejected = {}
     local restrictedStacks = 0
+    local skippedOnly = 0
 
     for _, entity in ipairs(entities) do
         local holder = resolveHolder(entity)
@@ -762,26 +773,27 @@ local function collect(entities, player, radius)
 
                 local dist = distanceTo(playerPos, holder)
                 if dist ~= nil and dist <= radius then
-                    local count, restricted = inspect(holder)
-                    restrictedStacks = restrictedStacks + restricted
+                    if Config.values.skipQuestItems and isQuestObject(holder) then
+                        skippedQuest = skippedQuest + 1
+                    else
+                        local count, skipped = inspect(holder)
+                        restrictedStacks = restrictedStacks + skipped
 
-                    if count > 0 then
-                        if Config.values.skipQuestItems and hasQuestLoot(holder) then
-                            skippedQuest = skippedQuest + 1
-                        else
+                        if count > 0 then
                             objects[#objects + 1] = {
                                 holder = holder,
                                 distance = dist,
                                 stacks = count,
                                 -- Mixed contents: the bulk transfer would take the
-                                -- restricted item too, so this one goes item by item.
-                                restricted = restricted > 0,
+                                -- skipped items too, so this one goes item by item.
+                                restricted = skipped > 0,
                             }
                             stacks = stacks + count
+                        elseif skipped > 0 then
+                            skippedOnly = skippedOnly + 1
+                            Log.DebugThrottled("scan.skippedonly", 10.0,
+                                "skipping object holding nothing the sweep may take")
                         end
-                    elseif restricted > 0 then
-                        Log.DebugThrottled("scan.restrictedonly", 10.0,
-                            "skipping object holding only hand-carried items")
                     end
                 end
             end
@@ -799,6 +811,14 @@ local function collect(entities, player, radius)
         end
         Log.DebugThrottled("scan.rejected", 5.0, "not lootable: " .. table.concat(parts, " "))
     end
+
+    -- Live counters for the settings window: "there is loot here and the mod is
+    -- not taking it" must be answerable while standing next to the thing.
+    Scanner.lastSkip = {
+        questObjects = skippedQuest,
+        skippedStacks = restrictedStacks,
+        skippedOnlyObjects = skippedOnly,
+    }
 
     return objects, stacks, skippedQuest, restrictedStacks
 end

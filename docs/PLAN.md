@@ -223,6 +223,18 @@ marker registry that strategy 3 feeds on is pruned on its own 30 s schedule rath
 from inside the strategy, because the observers keep filling it no matter which strategy
 ended up being selected.
 
+Quest loot is filtered per item, not per object. The first version rejected the whole
+holder if any item in it was quest-tagged, which meant a body carrying one quest item gave
+up nothing at all — and since the decision only reached the debug log, it presented as a
+single corpse that refused to be looted while everything around it worked. Vanilla `F` on
+that same body takes the ordinary items, and the mod now matches it. A holder whose own
+`IsQuest()` is true is still skipped whole: that is a scripted object, not a container that
+happens to hold a quest item.
+
+Every scan publishes why nearby loot was left alone — quest objects, skipped stacks,
+objects skipped entirely — and the settings window shows it live, so "there is loot here
+and the mod is not taking it" is answerable while standing next to the thing.
+
 ### Looter.lua
 
 Per object: quest check, restricted-content check, then

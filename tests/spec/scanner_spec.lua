@@ -275,6 +275,33 @@ describe("Scanner.Get", function()
         eq(#Scanner.Get(), 0)
     end)
 
+    it("takes the ordinary loot off a body that also carries a quest item", function()
+        -- One quest-tagged item used to make the entire body untouchable, which
+        -- in play looked like a single corpse refusing to be looted for no
+        -- reason while everything around it worked.
+        local Scanner, world = setup({ skipQuestItems = true })
+        world.targeting = {
+            Stub.corpse({ items = {
+                Stub.item({ name = "evidence", quest = true }),
+                Stub.item({ name = "eddies" }),
+            } }),
+        }
+
+        local objects, stacks = Scanner.Get()
+        eq(#objects, 1)
+        eq(stacks, 1, "the quest item is not on offer")
+        isTrue(objects[1].restricted, "mixed contents must go item by item")
+    end)
+
+    it("still leaves a scripted quest object entirely alone", function()
+        local Scanner, world = setup({ skipQuestItems = true })
+        world.targeting = {
+            Stub.container({ quest = true, items = { Stub.item({ name = "eddies" }) } }),
+        }
+
+        eq(#Scanner.Get(), 0)
+    end)
+
     it("takes quest loot once the setting is off", function()
         local Scanner, world = setup({ skipQuestItems = false })
         world.targeting = { Stub.container({ items = { Stub.item({ name = "evidence", quest = true }) } }) }

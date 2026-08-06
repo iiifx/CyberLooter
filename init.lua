@@ -18,7 +18,7 @@ local Auto = require("Modules/Auto.lua")
 local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.4.1",
+    version = "0.4.2",
     ready = false,
 }
 
@@ -194,6 +194,7 @@ local function main()
                 interactionGuardBroken = State.interactionCheckBroken,
                 heavyFilterBroken = Scanner.restrictedCheckAnswered == false,
                 autoReason = Auto.lastReason,
+                skip = Scanner.lastSkip,
                 onDumpInventory = Audit.DumpInventory,
                 onFindStuck = Audit.FindStuckItems,
                 onRemoveStuck = Audit.RemoveStuckItems,

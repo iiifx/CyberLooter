@@ -200,6 +200,15 @@ function Config.DrawWindow(status)
     ImGui.Text("Last sweep: " .. tostring(status.lastSweep))
     ImGui.Text("Marker registry entries: " .. tostring(status.registrySize))
 
+    -- "There is loot right here and the mod is not taking it" has to be
+    -- answerable while standing next to the thing, not only from the log.
+    if status.skip ~= nil then
+        ImGui.Text(string.format("Left alone nearby: %d quest objects, %d stacks, %d objects entirely",
+            status.skip.questObjects or 0,
+            status.skip.skippedStacks or 0,
+            status.skip.skippedOnlyObjects or 0))
+    end
+
     -- Failures that would otherwise be invisible: the mod keeps working, but not
     -- the way the settings above claim it does.
     if status.interactionGuardBroken then

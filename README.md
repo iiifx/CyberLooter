@@ -21,7 +21,9 @@ other mods. Installing CyberLooter itself is copying one folder.
 - Works on corpses, containers, stashes and items lying on the ground. Aiming at them is
   not required — the search is by distance, not by line of sight.
 - Picks up everything the game allows, junk and broken weapons included. Quest loot is
-  skipped by default so that scripted quest objects are never disturbed. Two things are
+  skipped by default — but per item, not per body: a corpse carrying a quest item still
+  gives up everything else on it. Only a scripted quest object is left untouched as a
+  whole. Two things are
   never taken: hand-carried heavy weapons, which the game equips into your hands rather
   than your backpack, and vehicle-mounted weapons. Both are invisible in the inventory,
   cannot be dropped or sold, and cost carry weight — see **Remove stuck items** below if a

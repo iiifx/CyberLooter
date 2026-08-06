@@ -66,6 +66,21 @@ describe("Looter.Sweep", function()
         eq(#world.player.__items, 1)
     end)
 
+    it("takes everything but the quest item off a mixed body", function()
+        local Looter, _, world = setup({ skipQuestItems = true })
+        local corpse = Stub.corpse({ items = {
+            Stub.item({ name = "evidence", quest = true }),
+            Stub.item({ name = "eddies" }),
+        } })
+        world.targeting = { corpse }
+
+        eq(Looter.Sweep(), 1)
+        eq(world.transferKinds(), "one", "the bulk path would have taken the quest item")
+        eq(#corpse.__items, 1)
+        eq(corpse.__items[1].__id.value, "evidence")
+        eq(#world.player.__items, 1)
+    end)
+
     it("counts an object emptied by someone else as skipped, not failed", function()
         local Looter, Scanner, world = setup()
         local container = Stub.container({ items = { Stub.item({ name = "eddies" }) } })

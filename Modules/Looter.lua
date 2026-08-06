@@ -38,8 +38,8 @@ local function transferItemByItem(holder, player)
         end
 
         for _, itemData in ipairs(items) do
-            -- Hand-carried weapons are left exactly where they are.
-            if not Scanner.IsRestrictedItem(itemData) then
+            -- Hand-carried weapons and quest loot are left exactly where they are.
+            if not Scanner.IsSkippedItem(itemData) then
                 local itemID = itemData:GetID()
                 local quantity = itemData:GetQuantity()
                 if quantity == nil or quantity < 1 then
@@ -74,9 +74,9 @@ local function lootOne(entry, player)
         return false, "already empty", 0
     end
 
-    -- Objects holding a hand-carried weapon alongside ordinary loot cannot go
-    -- through the bulk transfer: it would move the weapon too and leave the
-    -- player in the carrying pose with nothing in their hands.
+    -- Objects holding something the sweep must not take, alongside ordinary loot,
+    -- cannot go through the bulk transfer: it would move the quest item or the
+    -- hand-carried weapon too.
     if entry.restricted then
         local moved = transferItemByItem(holder, player)
         if moved > 0 then
