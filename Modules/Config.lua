@@ -19,6 +19,10 @@ local DEFAULTS = {
     autoLootInterval = 0.5,
     autoLootInVehicle = false,
 
+    -- Doors
+    autoOpenDoors = false,
+    autoOpenDoorDistance = 3.0,
+
     -- Native input hint
     showIndicator = true,
     hintShowKeyName = false,
@@ -40,6 +44,7 @@ local LIMITS = {
     holdTime = { 0.1, 1.5 },
     maxObjectsPerSweep = { 4, 100 },
     autoLootInterval = { 0.1, 3.0 },
+    autoOpenDoorDistance = { 1.0, 8.0 },
     indicatorOffsetX = { -800.0, 800.0 },
     indicatorOffsetY = { -600.0, 600.0 },
 }
@@ -196,6 +201,17 @@ function Config.DrawWindow(status)
     end
 
     ImGui.Separator()
+    ImGui.Text("Doors")
+
+    checkbox("Open the door you look at, outside combat", "autoOpenDoors")
+
+    if Config.values.autoOpenDoors then
+        sliderFloat("Reach (m)", "autoOpenDoorDistance", 1.0, 8.0, "%.1f")
+        ImGui.Text("Status: " .. tostring(status.doorReason))
+        ImGui.Text("Locked, sealed and skill-check doors are left alone.")
+    end
+
+    ImGui.Separator()
     ImGui.Text("Indicator")
 
     checkbox("Show indicator", "showIndicator")
@@ -242,6 +258,10 @@ function Config.DrawWindow(status)
 
     if status.heavyFilterBroken then
         ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Heavy weapon filter is inactive (item records unreadable).")
+    end
+
+    if status.combatCheckBroken then
+        ImGui.TextColored(1.0, 0.6, 0.2, 1.0, "Combat state is unreadable, so door opening stays off.")
     end
 
     if ImGui.Button("Clear log") then

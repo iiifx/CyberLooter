@@ -42,6 +42,10 @@ other mods. Installing CyberLooter itself is copying one folder.
 - Can also run **hands-free**: switch on automatic looting and the sweep repeats on a
   timer, twice a second by default, with no key at all. It only acts when the scan has
   actually found something nearby, so an empty street costs one cached scan per interval.
+- Can **open doors for you**, off by default. Look at a closed door outside combat and it
+  opens by itself, no keypress. Only doors you could already have walked through: locked,
+  sealed, unpowered, secured and skill-check doors are left exactly as they are, and so are
+  lifts, blinds and doors that open on their own. It never closes anything.
 
 ## Installation
 
@@ -157,6 +161,8 @@ The settings window appears together with the CET overlay. Settings are written 
 | Loot automatically, no key needed | off | Sweeps on a timer instead of on a key |
 | Sweep every | 0.5 s | How often automatic looting runs, 0.1–3 s |
 | Also while driving | off | Whether automatic looting runs while the player is in a vehicle |
+| Open the door you look at, outside combat | off | Opens a closed, unlocked door without a keypress |
+| Reach | 3 m | How close the door has to be for that, 1–8 m |
 | Skip quest loot | on | Leave quest items and quest containers alone |
 | Ignore key while a vanilla prompt is up | on | Never interfere with normal interactions |
 | Show indicator | on | Show the button prompt when loot is nearby |
@@ -191,6 +197,34 @@ Three things are deliberately different from the manual mode:
 
 Menus, photo mode and loading screens still stop it, and by default so does being in a
 vehicle: driving past a district otherwise vacuums up whatever the radius touches.
+
+### Opening doors
+
+With the option on, looking at a closed door outside combat opens it, and that is the whole
+feature. It is off by default, because a door opening without being asked is a surprise the
+first time.
+
+What it will and will not do:
+
+- **Only doors you could already walk through.** The check is the game's own: the door must
+  be closed, not locked, not sealed, not disabled, not unpowered, not access-secured, with
+  no skill check on it. This is not a lockpick and it never becomes one — a locked door
+  stays locked, and the action used is the same `ToggleOpen` the vanilla prompt runs, not
+  the forced-open one.
+- **Only what you are looking at**, within reach. Unlike looting, this one does use the
+  game's look-at query: doors are large and easy to face, and opening every door within a
+  radius as you walk down a corridor is not a feature anyone asked for.
+- **Never closes anything.** The game's action is a toggle, so "is it closed" is the one
+  answer the mod refuses to guess at: if that state cannot be read, nothing happens.
+- **Not lifts, blinds or automatic doors.** Elevator doors answer to the lift, blinds and
+  wall screens are doors only by inheritance, and automatic doors open on their own.
+- **Once per door.** Some doors close themselves after a moment; re-opening one immediately
+  would be a fight with the game, so a door just opened is left alone for ten seconds.
+
+Combat is read two ways — the player's own combat flag and the player state machine — and
+if neither can be read, the feature stays silent and says so in the settings window rather
+than opening doors during a firefight. Sneaking is not combat: a stealthing player is
+exactly who benefits from not having to press the key.
 
 ## How it works
 
@@ -323,6 +357,9 @@ mod at all.
   during scripted scenes.
 - **Shards are transferred, not read.** The vanilla pickup also runs a read action; this one
   does not, so a shard arrives unread.
+- **Door opening cannot tell intent.** It knows a door is closed and that you are looking at
+  it, not whether you closed it on purpose. A door you shut yourself stays shut for ten
+  seconds and then opens again if you keep facing it; turn away or switch the option off.
 
 ## Compatibility
 

@@ -15,10 +15,11 @@ local Hint = require("Modules/Hint.lua")
 local Hud = require("Modules/Hud.lua")
 local Input = require("Modules/Input.lua")
 local Auto = require("Modules/Auto.lua")
+local Doors = require("Modules/Doors.lua")
 local Audit = require("Modules/Audit.lua")
 
 local CyberLooter = {
-    version = "0.5.0",
+    version = "0.6.0",
     ready = false,
 }
 
@@ -129,6 +130,7 @@ local function main()
         Hint = Hint,
         Hud = Hud,
         Auto = Auto,
+        Doors = Doors,
         Audit = Audit,
         onSweep = onSweep,
     }
@@ -142,6 +144,7 @@ local function main()
     Hud.Init(deps)
     Input.Init(deps)
     Auto.Init(deps)
+    Doors.Init(deps)
     Audit.Init(deps)
 
     registerForEvent("onInit", function()
@@ -169,6 +172,7 @@ local function main()
         Hint.Tick(dt)
         Input.Tick(dt)
         Auto.Tick(dt)
+        Doors.Tick(dt)
 
         _lastStacks = updateIndicator()
     end)
@@ -192,8 +196,10 @@ local function main()
                 registrySize = Scanner.GetRegistrySize(),
                 hintForcedFallback = Hint.forcedFallback,
                 interactionGuardBroken = State.interactionCheckBroken,
+                combatCheckBroken = State.combatCheckBroken,
                 heavyFilterBroken = Scanner.restrictedCheckAnswered == false,
                 autoReason = Auto.lastReason,
+                doorReason = Doors.lastReason,
                 skip = Scanner.lastSkip,
                 onDumpInventory = Audit.DumpInventory,
                 onFindStuck = Audit.FindStuckItems,

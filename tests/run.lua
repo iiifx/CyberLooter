@@ -49,6 +49,7 @@ local SPECS = {
     "tests/spec/looter_spec.lua",
     "tests/spec/audit_spec.lua",
     "tests/spec/auto_spec.lua",
+    "tests/spec/doors_spec.lua",
 }
 
 for _, spec in ipairs(SPECS) do

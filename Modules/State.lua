@@ -14,6 +14,13 @@ local _recoveryLogged = false
 -- that costs is one extra sweep alongside a normal interaction.
 local HUB_STALE_AFTER = 20.0
 
+-- gamePSMCombat.InCombat. The blackboard field is a plain Int and the game's own
+-- code compares it against the literal (activityCardsHelper.script:
+-- `GetInt(...PlayerStateMachine.Combat) == 1`), so the number is read the same way
+-- rather than through an enum member that may not resolve on every build. The
+-- other states are Default 0, OutOfCombat 2 and Stealth 3 - stealth is not combat.
+local PSM_IN_COMBAT = 1
+
 local _time = 0.0
 local _hubSignature = nil
 local _hubSince = 0.0
@@ -93,6 +100,74 @@ function State.IsMounted()
     end
 
     return result == true
+end
+
+-- Set when neither combat signal can be read, so the settings window can admit
+-- that the "only outside combat" promise is not actually being checked.
+State.combatCheckBroken = false
+
+-- True while the player is in combat, as the game itself decides it.
+--
+-- Two independent signals, because either one alone can be unavailable:
+--   PlayerPuppet.IsInCombat (player.swift) is the engine's own cached answer;
+--   the player state machine blackboard carries the same thing as gamePSMCombat,
+--   where only InCombat means combat - Stealth is its own state and is not one.
+--
+-- Neither readable means the promise cannot be kept, so this answers "in combat"
+-- and nothing acts on it. Unlike the loot filters, failing closed here costs a
+-- feature that does nothing rather than a feature that does the wrong thing.
+function State.IsInCombat()
+    local answered = false
+
+    local ok, inCombat = pcall(function()
+        local player = State.GetPlayer()
+        if player == nil then
+            return nil
+        end
+        return player:IsInCombat()
+    end)
+
+    if ok and type(inCombat) == "boolean" then
+        answered = true
+        if inCombat then
+            State.combatCheckBroken = false
+            return true
+        end
+    end
+
+    local readable, state = pcall(function()
+        local player = State.GetPlayer()
+        if player == nil then
+            return nil
+        end
+
+        local bb = player:GetPlayerStateMachineBlackboard()
+        if bb == nil then
+            return nil
+        end
+
+        return bb:GetInt(GetAllBlackboardDefs().PlayerStateMachine.Combat)
+    end)
+
+    if readable and type(state) == "number" then
+        answered = true
+        if state == PSM_IN_COMBAT then
+            State.combatCheckBroken = false
+            return true
+        end
+    end
+
+    if not answered then
+        if not State.combatCheckBroken then
+            State.combatCheckBroken = true
+            Log.Warn("cannot tell whether the player is in combat - anything gated on "
+                .. "being out of combat stays switched off")
+        end
+        return true
+    end
+
+    State.combatCheckBroken = false
+    return false
 end
 
 -- True when the game itself has an interaction prompt up (door, corpse, ladder...).

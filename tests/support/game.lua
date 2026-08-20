@@ -93,6 +93,17 @@ function Stub.heavyWeapon(spec)
     return Stub.item(spec)
 end
 
+-- The credit chip. Tagged exactly as Items.MoneyShard is in the game's own data
+-- (currency.tweak), HideInUI included: the player's inventory handler turns it into
+-- eddies and deletes it on arrival, so it is never shown anywhere.
+function Stub.moneyShard(spec)
+    spec = spec or {}
+    spec.name = spec.name or "Items.MoneyShardUncommon"
+    spec.itemType = "ItemType.Gen_MoneyShard"
+    spec.tags = spec.tags or { "MoneyShard", "HideInUI", "SkipActivityLog", "HideInBackpackUI" }
+    return Stub.item(spec)
+end
+
 -- The mounted weapons of a car: ordinary Weapon equip area, invisible in the
 -- backpack, 11.5 kg each. Fourteen of them once ended up in a real inventory.
 function Stub.vehicleWeapon(spec)
@@ -228,6 +239,104 @@ function Stub.container(spec)
     return Stub.entity(spec)
 end
 
+-- A door, plus the persistent state object that holds everything worth knowing
+-- about it. Every state question can be made unreadable on its own, because which
+-- unanswerable question is fatal and which one is not is the whole design of the
+-- door gate.
+--
+-- spec: class, pos, closed, locked, sealed, disabled, unpowered, off, secured,
+--       lift, skillCheck, doorType, unreadable { closed|locked|sealed|... },
+--       noPS, actionMissing, queueFails
+function Stub.door(spec)
+    spec = spec or {}
+    local unreadable = spec.unreadable or {}
+
+    local function answer(key, value)
+        if unreadable[key] then
+            error(key .. " is unavailable on this door")
+        end
+        return value
+    end
+
+    local ps = {}
+
+    function ps:IsClosed()
+        return answer("closed", spec.closed ~= false)
+    end
+
+    function ps:IsLocked()
+        return answer("locked", spec.locked == true)
+    end
+
+    function ps:IsSealed()
+        return answer("sealed", spec.sealed == true)
+    end
+
+    function ps:IsDisabled()
+        return answer("disabled", spec.disabled == true)
+    end
+
+    function ps:IsUnpowered()
+        return answer("unpowered", spec.unpowered == true)
+    end
+
+    function ps:IsON()
+        return answer("on", spec.off ~= true)
+    end
+
+    function ps:IsDeviceSecured()
+        return answer("secured", spec.secured == true)
+    end
+
+    function ps:IsLiftDoor()
+        return answer("lift", spec.lift == true)
+    end
+
+    function ps:GetDoorType()
+        return answer("doortype", spec.doorType or EDoorType.INTERACTIVE)
+    end
+
+    function ps:ActionToggleOpen()
+        if spec.actionMissing then
+            return nil
+        end
+
+        local action = { __toggleOpen = true }
+
+        function action:SetExecutor(executor)
+            self.executor = executor
+        end
+
+        function action:RegisterAsRequester(id)
+            self.requester = id
+        end
+
+        return action
+    end
+
+    local door = Stub.entity({
+        class = spec.class or "Door",
+        parents = { Door = true, InteractiveDevice = true, Device = true, gameObject = true },
+        pos = spec.pos,
+    })
+
+    door.__ps = ps
+    door.__queueFails = spec.queueFails == true
+
+    function door:GetDevicePS()
+        if spec.noPS then
+            return nil
+        end
+        return self.__ps
+    end
+
+    function door:HasAnySkillCheckActive()
+        return answer("skillcheck", spec.skillCheck == true)
+    end
+
+    return door
+end
+
 -- A loose item on a table: the visual object holds nothing, the drop it points
 -- at is where the inventory actually lives.
 function Stub.worldItem(spec)
@@ -265,6 +374,12 @@ function Stub.install()
         byId = {},               -- for Game.FindEntityByID
         photoMode = false,
         mounted = false,
+        inCombat = false,
+        combatApiBroken = false,   -- PlayerPuppet.IsInCombat throws
+        psmCombatBroken = false,   -- the blackboard int throws
+        lookAt = nil,              -- what the player is looking at
+        lookAtFails = false,
+        doorEvents = {},           -- every action queued at the persistency system
         carryCapacity = 200.0,
         noItemWeightApi = false,
         noSlotApi = false,
@@ -395,7 +510,7 @@ function Stub.install()
     local defs = {
         UI_System = { IsInMenu = "IsInMenu" },
         UIInteractions = { InteractionChoiceHub = "InteractionChoiceHub" },
-        PlayerStateMachine = { MountedToVehicle = "MountedToVehicle" },
+        PlayerStateMachine = { MountedToVehicle = "MountedToVehicle", Combat = "Combat" },
     }
 
     -- Globals the mod reaches for ------------------------------------------------
@@ -423,6 +538,24 @@ function Stub.install()
                     end
 
                     return true, parts(world.targeting)
+                end,
+
+                GetLookAtObject = function(_, _, _, _)
+                    if world.lookAtFails then
+                        error("look-at query unavailable")
+                    end
+                    return world.lookAt
+                end,
+            }
+        end,
+
+        GetPersistencySystem = function()
+            return {
+                QueuePSDeviceEvent = function(_, action)
+                    if world.lookAt ~= nil and world.lookAt.__queueFails then
+                        error("device event refused")
+                    end
+                    world.doorEvents[#world.doorEvents + 1] = action
                 end,
             }
         end,
@@ -591,6 +724,15 @@ function Stub.install()
         Wea_HeavyMachineGun = "ItemType.Wea_HeavyMachineGun",
         Wea_LightMachineGun = "ItemType.Wea_LightMachineGun",
         Wea_Handgun = "ItemType.Wea_Handgun",
+        Gen_MoneyShard = "ItemType.Gen_MoneyShard",
+    }
+
+    _G.EDoorType = {
+        NONE = "EDoorType.NONE",
+        INTERACTIVE = "EDoorType.INTERACTIVE",
+        AUTOMATIC = "EDoorType.AUTOMATIC",
+        PHYSICAL = "EDoorType.PHYSICAL",
+        REMOTELY_CONTROLLED = "EDoorType.REMOTELY_CONTROLLED",
     }
 
     _G.gamedataMappinVariant = { LootVariant = "LootVariant" }
@@ -687,8 +829,27 @@ function Stub.install()
             GetBool = function(_, _)
                 return world.mounted
             end,
+
+            -- gamePSMCombat: InCombat is 1, OutOfCombat 2. Stealth is 3 and is
+            -- deliberately reachable from a spec, because it must not count as combat.
+            GetInt = function(_, _)
+                if world.psmCombatBroken then
+                    error("blackboard read failed")
+                end
+                if world.psmCombat ~= nil then
+                    return world.psmCombat
+                end
+                return world.inCombat and 1 or 2
+            end,
         },
     })
+
+    function world.player:IsInCombat()
+        if world.combatApiBroken then
+            error("IsInCombat is unavailable on this build")
+        end
+        return world.inCombat == true
+    end
 
     return world
 end
@@ -764,6 +925,8 @@ function Stub.config(overrides)
         useImGuiFallback = false,
         indicatorOffsetX = 0.0,
         indicatorOffsetY = 60.0,
+        autoOpenDoors = false,
+        autoOpenDoorDistance = 3.0,
         debugLog = true,
     }
 

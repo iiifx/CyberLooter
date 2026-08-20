@@ -110,6 +110,21 @@ local HIDDEN_ITEM_TAGS = {
     "SoftwareShsard",  -- CDPR's own typo, shipped; spelled exactly like this
 }
 
+-- One family of items carries HideInUI and must still be taken: the ones the game
+-- converts the instant they arrive. A money shard - the credit chip lying on desks
+-- and in pockets - is tagged HideInUI because it is never meant to be seen in a
+-- backpack: PlayerPuppet.OnItemAddedToInventory (player.swift:2091) reads its sell
+-- price, calls GiveMoney and removes the item again, so it turns into eddies and is
+-- gone before any screen could show it.
+--
+-- That is the exact opposite of what the tag list above guards against. The list
+-- exists because an invisible item can never be seen, sold or dropped while its
+-- weight still counts; an item that deletes itself on arrival can never be stuck.
+-- Refusing it meant every credit chip in the game was left on the ground, and it
+-- also dragged whatever lay beside it onto the item-by-item path.
+local CONVERTED_ON_PICKUP_TAG = "MoneyShard"
+local CONVERTED_ON_PICKUP_TYPES = { "Gen_MoneyShard" }
+
 -- HideInBackpackUI is deliberately absent from that list, and this is the
 -- expensive lesson of the whole filter. It does not mean "not a real item"; it
 -- means "this screen is not where this item lives". Installed cyberware carries
@@ -189,6 +204,40 @@ function Scanner.ItemPath(itemData)
     return nil
 end
 
+-- Both signals are asked separately: the tag lives on the base record every money
+-- shard inherits from, the item type is the enum the player's own handler switches
+-- on, and either one on its own settles the question.
+local function isConvertedOnPickup(itemData, record)
+    local tagged = probe("converted.tag", function()
+        return itemData:HasTag(CName.new(CONVERTED_ON_PICKUP_TAG))
+    end)
+    if tagged == true then
+        return true
+    end
+
+    if record == nil then
+        return false
+    end
+
+    local typed = probe("converted.itemtype", function()
+        local typeRecord = record:ItemType()
+        if typeRecord == nil then
+            return false
+        end
+
+        local itemType = typeRecord:Type()
+        for _, name in ipairs(CONVERTED_ON_PICKUP_TYPES) do
+            if sameEnum(itemType, enumMember(gamedataItemType, name)) then
+                return true
+            end
+        end
+
+        return false
+    end)
+
+    return typed == true
+end
+
 local function judge(itemData, path)
     local answered = false
 
@@ -205,25 +254,6 @@ local function judge(itemData, path)
         -- must still fire if none of those signals can be evaluated.
     end
 
-    -- The game's own test, and the one worth trusting most: an item the
-    -- inventory system filters out by tag can never be seen, equipped, sold or
-    -- dropped by the player, so taking it only costs carry weight.
-    local hidden = probe("hidden", function()
-        for _, tag in ipairs(HIDDEN_ITEM_TAGS) do
-            if itemData:HasTag(CName.new(tag)) then
-                return true
-            end
-        end
-        return false
-    end)
-    if hidden == true then
-        Scanner.restrictedCheckAnswered = true
-        return true
-    end
-    if hidden ~= nil then
-        answered = true
-    end
-
     -- A readable record is not by itself an answer: what counts is whether one of
     -- the actual signals below could be evaluated.
     -- GetItemRecord takes the ItemID itself, not the TweakDBID inside it. Passing
@@ -234,6 +264,28 @@ local function judge(itemData, path)
         record = RPGManager.GetItemRecord(itemData:GetID())
         return record ~= nil
     end)
+
+    -- The game's own test, and the one worth trusting most: an item the
+    -- inventory system filters out by tag can never be seen, equipped, sold or
+    -- dropped by the player, so taking it only costs carry weight. Items the game
+    -- converts on arrival are exempt: nothing they cost can outlive the transfer.
+    if not isConvertedOnPickup(itemData, record) then
+        local hidden = probe("hidden", function()
+            for _, tag in ipairs(HIDDEN_ITEM_TAGS) do
+                if itemData:HasTag(CName.new(tag)) then
+                    return true
+                end
+            end
+            return false
+        end)
+        if hidden == true then
+            Scanner.restrictedCheckAnswered = true
+            return true
+        end
+        if hidden ~= nil then
+            answered = true
+        end
+    end
 
     if record ~= nil then
         -- The authoritative signal: hand-carried weapons declare WeaponHeavy.

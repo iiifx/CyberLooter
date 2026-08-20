@@ -85,6 +85,40 @@ describe("Scanner.IsRestrictedItem", function()
         isFalse(Scanner.IsRestrictedItem(Stub.item({ name = "rounds", tags = { "Ammo" } })))
     end)
 
+    it("takes the credit chip, HideInUI and all", function()
+        -- A money shard is tagged HideInUI because the player's own inventory
+        -- handler turns it into eddies and deletes it the moment it arrives, so it
+        -- is never shown anywhere. The tag list exists to refuse items that stay in
+        -- the inventory forever, which is the exact opposite case.
+        local Scanner = setup()
+        isFalse(Scanner.IsRestrictedItem(Stub.moneyShard({})))
+    end)
+
+    it("recognises the credit chip by its item type alone", function()
+        -- Belt and braces: the tag and the item type are asked separately, so a
+        -- build that answers only one of them still gets the shard right.
+        local Scanner = setup()
+        isFalse(Scanner.IsRestrictedItem(Stub.item({
+            name = "Items.MoneyShardScaling",
+            tags = { "HideInUI" },
+            itemType = "ItemType.Gen_MoneyShard",
+        })))
+    end)
+
+    it("keeps refusing the invisible items that are not converted on pickup", function()
+        -- The exemption must be exactly one family wide. These are the ones that
+        -- fill an inventory nothing can empty again.
+        local Scanner = setup()
+        isTrue(Scanner.IsRestrictedItem(Stub.item({
+            name = "Items.Preset_Base_Lexington_Left_Hand",
+            tags = { "Left_Hand", "HideInUI" },
+        })))
+        isTrue(Scanner.IsRestrictedItem(Stub.item({
+            name = "Items.w_att__scope_long_03",
+            tags = { "DummyPart", "HideInUI" },
+        })))
+    end)
+
     it("treats an unanswerable item as allowed rather than forbidden", function()
         -- Failing the other way turns one unavailable API into a dead mod: every
         -- item restricted, every object empty, nothing to loot anywhere.
@@ -363,6 +397,20 @@ describe("Scanner.Get", function()
         eq(#objects, 1)
         eq(stacks, 1, "the weapon is not on offer")
         isTrue(objects[1].restricted)
+    end)
+
+    it("offers a body carrying a credit chip through the ordinary bulk transfer", function()
+        -- Refusing the shard also dragged everything beside it onto the
+        -- item-by-item path, which is not how the game loots a corpse.
+        local Scanner, world = setup()
+        world.targeting = {
+            Stub.corpse({ items = { Stub.moneyShard({}), Stub.item({ name = "eddies" }) } }),
+        }
+
+        local objects, stacks = Scanner.Get()
+        eq(#objects, 1)
+        eq(stacks, 2)
+        isFalse(objects[1].restricted)
     end)
 
     it("leaves quest loot alone while the setting is on", function()

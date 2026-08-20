@@ -491,6 +491,116 @@ break those quests.
 
 ---
 
+## 16. Why the credit chip was never picked up — VERIFIED
+
+The item is `Items.MoneyShard`, and the game's own data says plainly why the mod refused it.
+`Cyberpunk-Tweaks/tweaks/base/gameplay/static_data/database/items/misc/currency.tweak`:
+
+```
+MoneyShard : Item
+{
+  itemType = "ItemType.Gen_MoneyShard";
+  displayName = "LocKey#93437";
+  iconPath = "q003_chip";
+  tags = [ "MoneyShard", "HideInUI", "SkipActivityLog", "HideInBackpackUI" ];
+}
+```
+
+`HideInUI` is on the mod's refusal list (§12), so every money shard in the game was
+classified as untouchable junk. Worse than the missed pickup: an object holding a shard
+alongside ordinary loot was marked as mixed, which forces the item-by-item path instead of
+the bulk `TransferAllItems` the game itself uses.
+
+The tag is not a mistake in the game's data, and it is not a reason to leave the shard
+either. `PlayerPuppet.OnItemAddedToInventory` (`player.swift:2091`, the money branch at
+`:2277`) does this the moment the shard arrives:
+
+```swift
+if Equals(itemType, gamedataItemType.Gen_MoneyShard) {
+  price = RPGManager.CalculateSellPrice(this.GetGame(), this, evt.itemID) * evt.itemData.GetQuantity();
+  transSystem.GiveMoney(this, price, n"money");
+  transSystem.RemoveItem(this, evt.itemID, transSystem.GetItemQuantity(this, evt.itemID));
+};
+```
+
+So the shard turns into eddies and deletes itself before any screen could show it. That is
+why it is hidden, and it is also why it can never become stuck — which is the only hazard
+the `HideInUI` rule exists to prevent. Vanilla `F` on a corpse takes it through the same
+`TransferAllItems`, so nothing about this path is new.
+
+**Is the class wider than one item?** Checked: 45 files in the tweak database mention
+`HideInUI`, and the others are genuine internals — the `Left_Hand` weapon variants,
+`DummyPart` attachments, `PropItem`, cyberware fragments. Those must stay refused. The money
+shard is the only family the game consumes on arrival, so the exemption is one predicate
+wide: tag `MoneyShard` or item type `Gen_MoneyShard`, asked as two separate probes because
+either one on its own settles it.
+
+## 17. Opening a door the way the game does — VERIFIED
+
+**The action.** Pressing `F` on a door runs `ToggleOpen`. `DoorController.GetActions`
+(`doorController.swift:482-489`) pushes `GetPlayerToggleOpenAction()` → `ActionToggleOpen()`
+(`:675`), and `OnToggleOpen` (`:703`) is what actually moves the door.
+
+The game also queues that action itself, and this is the exact shape to copy
+(`doorController.swift:1341`):
+
+```swift
+actionClose = this.ActionToggleOpen();
+actionClose.SetExecutor(evt.GetExecutor());
+actionClose.RegisterAsRequester(PersistentID.ExtractEntityID(this.GetID()));
+this.GetPersistencySystem().QueuePSDeviceEvent(actionClose);
+```
+
+All four calls are reachable from Lua: `DoorControllerPS:ActionToggleOpen`,
+`BaseScriptableAction:SetExecutor` / `:RegisterAsRequester`,
+`gamePersistencySystem:QueuePSDeviceEvent`. The published `unlockNightCity` mod drives
+devices through `QueuePSDeviceEvent` the same way, so the route is proven outside the game's
+own code as well. The requester id is taken straight off the door entity instead of through
+`PersistentID.ExtractEntityID`, which is the same value without the extra dependency.
+
+**Deliberately not `Door.OpenDoor()`** (`door.swift:794`), even though it is the shorter
+call and a shipped mod uses it. It goes through `ActionSetOpened`, and `OnSetOpened`
+(`doorController.swift:754`) refuses only sealed and disabled doors — a locked door opens.
+That is a lockpick, which is a different mod.
+
+**The condition.** `Door.EvaluateOffMeshLinks` (`door.swift:128-150`) is the game deciding
+whether navigation may route through a door, and its "openable without effort" branch reads:
+
+```swift
+if ps.IsClosed() {
+  ...
+  if !ps.IsLocked() && !ps.IsDeviceSecured() && !this.HasAnySkillCheckActive() && ps.IsON() {
+```
+
+with `IsDisabled() || IsSealed() || IsUnpowered()` ruled out above it. Same questions, same
+order — so the feature can never offer more than the game already does. `IsLiftDoor()` and
+`GetDoorType()` (`EDoorType.AUTOMATIC`, `REMOTELY_CONTROLLED`) exclude the doors that answer
+to something other than the player, and `Window` / `MovableWallScreen` are excluded by class:
+both extend `Door` and would otherwise be swept along.
+
+**Combat.** Two independent signals. `PlayerPuppet.IsInCombat()` is the engine's own cached
+answer (`player.swift`), and the player state machine blackboard carries the same thing as
+`gamePSMCombat`: `Default 0, InCombat 1, OutOfCombat 2, Stealth 3`. The game compares that
+field against the literal `1` (`activityCardsHelper.script`), so the number is read the same
+way rather than through an enum member that may not resolve. Stealth is its own state and is
+not combat.
+
+**Which door.** `gametargetingTargetingSystem:GetLookAtObject(instigator, withLOS,
+ignoreTransparent)` returns the object under the cursor — the same thing that puts the
+prompt on screen. Unlike the loot search, which deliberately ignores where the player is
+looking, a door is large enough to face without aiming, and a radius sweep would open every
+door in a corridor.
+
+**Two states must be certain, the rest need not be.** `IsClosed`, `IsLocked` and `IsSealed`
+are refused when unreadable: the action is a toggle, so a wrong "closed" would close a door
+the player just opened, and a wrong "locked" would break the only promise this feature
+makes. Everything else only predicts whether the queued action would have succeeded, and the
+game refuses it harmlessly if not — so an unreadable answer there does not veto. This is the
+§14 lesson applied deliberately rather than uniformly: a probe that cannot answer must fail
+toward the safe side, and which side is safe depends on the question.
+
+---
+
 ## Risk summary
 
 | Risk | Assessment | Mitigation |
@@ -502,3 +612,5 @@ break those quests.
 | Broken quest | Low | `IsQuest()` filter, on by default |
 | Inventory filling with junk | Certain | A deliberate user choice |
 | Items that cannot be seen or dropped | Handled | Refused by the game's own tag blacklist (§12); a cleanup tool exists for saves that already have some |
+| A door opens when it should not | Low | Off by default; the game's own openability condition (§17), and the two states that could make the toggle harmful must be readable or nothing happens |
+| A door opens during a fight | Low | Two independent combat signals; neither readable means the feature stays silent and says so |
